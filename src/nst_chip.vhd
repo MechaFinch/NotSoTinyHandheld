@@ -1,0 +1,8 @@
+--
+-- Mechafinch
+-- NST Handheld Project
+--
+-- nst_chip
+-- Entity representing the fpga board. This will instantiate components (cpu, spi driver, etc) and
+-- map IO pins
+--

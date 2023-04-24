@@ -1,0 +1,48 @@
+
+	GPIO Mapping
+
+FireAnt Pin		Trion Pin		NST Pin
+P0				GPIOL_00		memory_bus(0)
+P1				GPIOL_03		memory_bus(1)
+P2				GPIOL_05		memory_bus(2)
+P3				GPIOL_07		memory_bus(3)
+P4				GPIOL_09		memory_bus(4)
+P5				GPIOL_10		memory_bus(5)
+P6				GPIOL_11		memory_bus(6)
+P7				GPIOL_12		memory_bus(7)
+P8				GPIOL_13		memory_bus(8)
+P9				GPIOL_14		memory_bus(9)
+P10				GPIOL_15		memory_bus(10)
+P11				GPIOL_16		memory_bus(11)
+P12				GPIOL_17		memory_bus(12)
+P13				GPIOL_18		memory_bus(13)
+P14				GPIOL_19		memory_bus(14)
+P15				GPIOL_21		memory_bus(15)
+P16				GPIOR_00		
+P17				GPIOR_01		keypad_data
+
+P18				GPIOR_03		mem_addr_low_en
+P19				GPIOR_06		mem_addr_high_en
+P20				GPIOR_08		memory_read
+P21				GPIOR_11		memory_write
+P22				GPIOR_12		
+P23				GPIOR_14		spi_sel(0)
+P24				GPIOR_18		spi_sel(1)
+P25				GPIOR_19		spi_sel(2)
+P26				GPIOR_20		spi_cd
+P27				GPIOR_21		spi_cido
+P28				GPIOR_22		spi_codi
+P29				GPIOR_24		spi_clk
+P30				GPIOR_25		keypad_sel(0)
+P31				GPIOR_26		keypad_sel(1)
+P32				GPIOR_27		keypad_sel(2)
+P33				GPIOR_31		keypad_sel(3)
+P34				GPIOR_32		keypad_sel(4)
+
+LED1			GPIOR_02		leds(0)
+LED2			GPIOR_05		leds(1)
+LED3			GPIOR_07		leds(2)
+LED4			GPIOR_10		leds(3)
+
+BTN1			GPIOR_28		btn_1
+BTN2			GPIOR_30		btn_2

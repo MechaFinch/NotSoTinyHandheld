@@ -1,0 +1,9 @@
+--
+-- Mechafinch
+-- NST Handheld Project
+--
+-- nst_keypad_interface
+-- Interface for the keypad. The keypad is a matrix of up to 32 buttons accessed with a selector
+-- and a data pin. This module should track the state of the buttons, send interrupts on state
+-- changes when enabled, and handle memory-mapped configuration.
+--

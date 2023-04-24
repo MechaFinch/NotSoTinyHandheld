@@ -1,0 +1,10 @@
+--
+-- Mechafinch
+-- NST Handheld Project
+--
+-- nst_boot_rom
+-- Read-only memory for bootstrapping the environment. This will essentially act as a tiny BIOS in
+-- that its primary purpose is to read a main program from an SD card over SPI, and as a result has
+-- routines for operating SPI polling which could be used if lazy. Given space and necessity, time-
+-- sensitive routines could also be put here as it'll be far faster than RAM.
+--

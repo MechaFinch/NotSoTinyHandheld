@@ -246,19 +246,19 @@ package nst_constants is
 	constant OP_XOR_RIM:		nst_byte_t := x"D2";
 	constant OP_NOT_RIM:		nst_byte_t := x"D3";
 	
-	constant OP_CALL_I16:		nst_byte_t := x"D4";
-	constant OP_CALL_RIM:		nst_byte_t := x"D5";
-	constant OP_CALLA_I32:		nst_byte_t := x"D6";
-	constant OP_CALLA_RIM32:	nst_byte_t := x"D7";
+	constant OP_CALL_I8:		nst_byte_t := x"D4";
+	constant OP_CALL_I16:		nst_byte_t := x"D5";
+	constant OP_CALL_I32:		nst_byte_t := x"D6";
+	constant OP_CALL_RIM:		nst_byte_t := x"D7";
+	constant OP_CALLA_I32:		nst_byte_t := x"D8";
+	constant OP_CALLA_RIM32:	nst_byte_t := x"D9";
 	
-	constant OP_JMP_I8:			nst_byte_t := x"D8";
-	constant OP_JMP_I16:		nst_byte_t := x"D9";
-	constant OP_JMP_I32:		nst_byte_t := x"DA";
-	constant OP_JMP_RIM:		nst_byte_t := x"DB";
-	constant OP_JMPA_I32:		nst_byte_t := x"DC";
-	constant OP_JMPA_RIM32:		nst_byte_t := x"DD";
-	constant OP_UNDEF_DE:		nst_byte_t := x"DE";
-	constant OP_UNDEF_DF:		nst_byte_t := x"DF";
+	constant OP_JMP_I8:			nst_byte_t := x"DA";
+	constant OP_JMP_I16:		nst_byte_t := x"DB";
+	constant OP_JMP_I32:		nst_byte_t := x"DC";
+	constant OP_JMP_RIM:		nst_byte_t := x"DD";
+	constant OP_JMPA_I32:		nst_byte_t := x"DE";
+	constant OP_JMPA_RIM32:		nst_byte_t := x"DF";
 	
 	constant OP_RET:			nst_byte_t := x"E0";
 	constant OP_IRET:			nst_byte_t := x"E1";

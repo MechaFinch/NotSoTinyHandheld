@@ -1,0 +1,8 @@
+--
+-- Mechafinch
+-- NST Handheld Project
+--
+-- nst_memory_manager
+-- Memory manager for the system. This module will handle interfacing between the harvard style CPU
+-- interface and memory-mapped IO & RAM.
+--

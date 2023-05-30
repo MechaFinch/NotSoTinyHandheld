@@ -21,17 +21,17 @@ P15				GPIOL_21		memory_bus(15)
 P16				GPIOR_00		
 P17				GPIOR_01		keypad_data
 
-P18				GPIOR_03		mem_addr_low_en
-P19				GPIOR_06		mem_addr_high_en
-P20				GPIOR_08		memory_read
-P21				GPIOR_11		memory_write
+P18				GPIOR_03		mem_addr_high_clk
+P19				GPIOR_06		mem_addr_low_clk
+P20				GPIOR_08		memory_write
+P21				GPIOR_11		memory_read
 P22				GPIOR_12		
 P23				GPIOR_14		spi_sel(0)
 P24				GPIOR_18		spi_sel(1)
 P25				GPIOR_19		spi_sel(2)
 P26				GPIOR_20		spi_cd
-P27				GPIOR_21		spi_cido
-P28				GPIOR_22		spi_codi
+P27				GPIOR_21		spi_codi
+P28				GPIOR_22		spi_cido
 P29				GPIOR_24		spi_clk
 P30				GPIOR_25		keypad_sel(0)
 P31				GPIOR_26		keypad_sel(1)

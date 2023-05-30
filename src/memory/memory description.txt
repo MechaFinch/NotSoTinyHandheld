@@ -1,0 +1,145 @@
+
+	NST Memory Description
+
+CPU Perspective
+	The NST CPU interfaces with the memory system via two modules: The IP Readahead Buffer (IRB),
+	and the Bulk Data Buffer (BDB). The IRB constantly reads as much as possible from an address
+	offset from the IP (or predicted branch target). The BDB performs random access of up to 20
+	consecutive bytes as needed by the program. 
+	
+	The IRB interfaces exclusively with the instruction cache, while the BDB may be directed either
+	to the data cache or a memory-mapped device as determined by the memory manager.
+	
+Memory Manager
+	The memory manager performs the following tasks, in priority order:
+	1. Route MMIO
+	2. Handle data cache operations
+	3. Feed instruction cache
+	
+	The memory manager recieves a block read address from the instruction cache, a block read/write
+	address from the data cache, and an unaligned read/write address from the BDB. As determined by
+	their mappings and priorities, they are used to control memory devices. The memory manager will
+	decompose block read/writes into operations suitable to each device. 
+
+Caches
+	The FPGA has 24 5120 bit BRAM blocks, and we msy want at least 2 of these for opcode decoding.
+	With maths done below, we find these possible configurations:
+	
+	-- 2 WAY ASSOCIATIVE --
+	Candidates
+	512x2x4 (4k, 11)	512x2x4 (4k, 11)	(8k, 22)
+	512x2x4 (4k, 11)	256x2x8	(4k, 9)		(8k, 20)	<-- this one
+	256x2x8 (4k, 9)		256x2x8 (4k, 9)		(8k, 18)
+	
+	With 3 remaining BRAMs, we may allocate 512-1024 bytes of bootrom
+	
+	Block Size - 1024x 2x 4 byte (8k)
+	data: 64 bits
+	tag: 40 bits (2x 32 - 2 block - 10 set)
+	status: 4 bits (1x lru, 2x dirty, 1x valid)
+	108 bits = 22 BRAM
+	
+	Block Size - 512x 2x 8 byte (8k)
+	data: 128 bits
+	tag: 40 bits (2x 32 - 3 block - 9 set)
+	status: 4 bits
+	172 bits = 18 BRAM
+	
+	Block Size - 256x 2x 16 byte (8k)
+	data: 256 bits
+	tag: 40 bits (2x 32 - 4 block - 8 set)
+	status: 4 bits
+	300 bits = 15 BRAM
+	
+	Block Size - 512x 2x 4 byte (4k)
+	data: 64 bits
+	tag: 42 bits (2x 32 - 2 block - 9 set)
+	status: 4 bits
+	110 bits = 11 BRAM
+	
+	Block Size - 256x 2x 8 byte (4k)
+	data: 128 bits
+	tag: 42 bits (2x 32 - 3 block - 8 set)
+	status: 4 bits
+	174 bits = 9 BRAM
+	
+	Block Size - 256x 2x 4 byte (2k)
+	data: 64 bits
+	tag: 44 bits (2x 32 - 2 block - 8 set)
+	status: 4 bits
+	112 bits = 6 BRAM
+	
+	
+	
+	-- DIRECT MAPPED --
+	Candidates
+	1024x4	(4k, 11),	256x16	(4k, 8),	8k, 19		balanced 8k, smaller data blocks
+	512x8	(4k, 9),	256x16	(4k, 8),	8k, 17		balanced 8k, larger data blocks
+	
+	Full List
+	1024x8	(8k, 17),	512x4  	(2k, 6),	10k, 23		wasteful
+	
+	512x16	(8k, 15),	512x8 	(4k, 9),	12k, 24		zero bram remaining
+	512x16	(8k, 15),	256x16	(4k, 8),	12k, 23		unaligned nope
+	512x16	(8k, 15),	512x4	(2k, 6),	10k, 21		loses to 256x32 equ.
+	
+	256x32	(8k, 14),	512x8	(4k, 9),	12k, 23		gives 12k of cache but limits ROM
+	256x32	(8k, 14),	256x16	(4k, 8),	12k, 22		unaligned nope
+	256x32	(8k, 14),	512x4	(2k, 6),	10k, 20		efficient BRAM use but impractical distribution
+	
+	1024x4	(4k, 11),	1024x4	(4k, 11),	8k, 22		wasteful
+	1024x4	(4k, 11),	512x8	(4k, 9),	8k, 20		wasteful
+	1024x4	(4k, 11),	256x16	(4k, 8),	8k, 19		candidate
+	1024x4	(4k, 11),	512x4	(2k, 6),	6k, 17		too small
+	
+	512x8	(4k, 9),	512x8	(4k, 9),	8k, 18		wasteful
+	512x8	(4k, 9),	256x16	(4k, 8),	8k, 17		candidate
+	512x8	(4k, 9),	512x4	(2k, 6),	6k, 15		too small
+	
+	256x16	(4k, 8),	256x16	(4k, 8),	8k, 16		unaligned nope
+	256x16	(4k, 8),	512x4	(2k, 6),	6k, 14		too small
+	
+	512x4	(2k, 6),	512x4	(2k, 6),	4k, 12		too small
+	
+	
+	Block size for 1024 x 8 bytes data (8k)
+	data: 64 bits
+	tag: 19 bits (32 - 3 block index - 10 set index)
+	status: 2 bits (1 lru, 1 dirty)
+	85 bits = 17 BRAM blocks (0 bits per cache block wasted)
+	
+	Block size for 512 x 16 bytes data (8k)
+	data: 128 bits
+	tag: 19 bits (32 - 4 block - 9 set)
+	status: 2 bits
+	149 bits = 15 BRAM blocks (1 bit per cache block wasted)
+	
+	Block size for 256 x 32 (8k)
+	data: 256 bits
+	tag: 19 bits (32 - 5 block - 8 set)
+	status: 2 bits
+	277 bits = 14 BRAM blocks (3 bits per cache block wasted)
+	
+	Block size for 1024 x 4 bytes data (4k)
+	data: 32 bits
+	tag: 20 bits (32 - 2 block - 10 set)
+	status: 2 bits
+	54 bits = 11 BRAM blocks (1 bits per cache block wasted)
+	
+	Block size for 512 x 8 bytes data (4k)
+	data: 64 bits
+	tag: 20 bits (32 - 3 block - 9 set)
+	status: 2 bits
+	86 bits = 9 BRAM blocks (4 bits per cache block wasted)
+	
+	Block size for 256 x 16 (4k)
+	data: 128 bits
+	tag: 20 bits (32 - 4 block - 8 set)
+	status: 2 bits
+	150 bits = 8 BRAM blocks (10 bits per cache block wasted)
+	
+	Block size for 512 x 4 bytes data (2k)
+	data: 32 bits
+	tag: 21 bits (32 - 2 block - 9 set)
+	status: 2 bits
+	55 bits = 6 BRAM blocks (5 bits per cache block wasted)

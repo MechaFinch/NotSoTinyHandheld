@@ -8,11 +8,45 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 use work.nst_types.all;
 
 package nst_constants is
-	-- device constants
-	constant MEMORY_DATA_WIDTH:	integer := 16;
+	-- memory map
+	type memory_mapping is record
+		start_address:	unsigned;
+		end_address:	unsigned;
+		cachable:		boolean;
+	end record;
+	
+	constant RAM_INTERFACE_MAPPING:	memory_mapping := (
+		start_address	=> x"0000_0000",	-- 1 MB
+		end_address		=> x"000F_FFFF",
+		cachable		=> true
+	);
+	
+	constant SPI_INTERFACE_MAPPING: memory_mapping := (
+		start_address	=> x"8000_0000",	-- 4 bytes
+		end_address		=> x"8000_0003",
+		cachable		=> false
+	);
+	
+	constant KEYPAD_INTERFACE_MAPPING: memory_mapping := (
+		start_address	=> x"8001_0000",	-- 4 bytes (TBD)
+		end_address		=> x"8001_0003",
+		cachable		=> false
+	);
+	
+	constant BOOTROM_MAPPING: memory_mapping := (
+		start_address	=> x"FFFF_FC00", -- 1 kB
+		end_address		=> x"FFFF_FFFF",
+		cachable		=> true
+	);
+	
+	-- device interrupt vectors
+	constant VECTOR_RESET:	nst_byte_t := x"00";
+	constant VECTOR_SPI:	nst_byte_t := x"01";
+	constant VECTOR_KEYPAD:	nst_byte_t := x"02";
 
 	-- opcodes
 	constant OP_NOP:			nst_byte_t := x"00";

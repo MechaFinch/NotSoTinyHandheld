@@ -33,7 +33,11 @@ package nst_types is
 	
 	type packed4_flags_t is array (3 downto 0) of flags_t;
 	type packed8_flags_t is array (1 downto 0) of flags_t;
+	
+	-- cache related
+	type icache_block_data_t is array (7 downto 0) of nst_byte_t;
+	type dcache_block_data_t is array (3 downto 0) of nst_byte_t;
 
 	-- word outputs of the bulk memory buffer
-	type bulk_data_t is array (0 to 9) of nst_word_t;
+	type bulk_data_t is array (19 downto 0) of nst_byte_t;
 end nst_types;

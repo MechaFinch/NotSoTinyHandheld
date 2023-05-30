@@ -7,9 +7,9 @@ edge. Address is valid on the rising edge of the previous clock.
 	WRITING
 Write enable is set low on the rising edge of the memory clock, and set high on the falling edge.
 Data is asserted on the falling edge of the previous clock.
-	FULL PERIOD MINIMUM: 45 ns (t WP)
+	HALF PERIOD MINIMUM: 45 ns (t WP)
 	
-	Thus the minimum period demanded by the RAM is at least 60 ns, or at most 16.6 MHz
+	Thus the minimum period demanded by the RAM is at least 90 ns, or at most 11.1 MHz
 	Interpolation of the maximum clock frequency of the address latch chips suggests a similar
 	maximum frequency.
 	The maximum frequency will likely be limited primarily by the project being on a breadboard.

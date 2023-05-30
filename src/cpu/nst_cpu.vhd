@@ -26,6 +26,16 @@ entity nst_cpu is
 		data_memory_address:		out nst_dword_t;
 		data_memory_value_out:		out std_logic_vector(MEMORY_DATA_WIDTH - 1 downto 0);
 		data_memory_read:			out std_logic;
-		data_memory_write:			out std_logic
+		data_memory_write:			out std_logic;
+		
+		exec_clk:	in std_logic;
+		mem_clk:	in std_logic;
+		
+		debug_spi_sel:		out std_logic_vector(2 downto 0);
+		debug_spi_cd:		out std_logic;
+		debug_spi_cido:		in std_logic;
+		debug_spi_codi:		out std_logic;
+		debug_spi_clk_in:	in std_logic;
+		debug_spi_clk_out:	out std_logic
 	);
 end nst_cpu;

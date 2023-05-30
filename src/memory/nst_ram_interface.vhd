@@ -1,9 +1,0 @@
---
--- Mechafinch
--- NST Handheld Project
---
--- nst_ram_interface
--- Interface for the off-board RAM chips. RAM is setup with a pair of AS6C4008 512k SRAM chips
--- addressed by 3 SN74HC273 8-bit DFFs. A 16 bit multiplexed address/data bus is used to write
--- addresses to the latches and read/write from the two SRAMs.
---

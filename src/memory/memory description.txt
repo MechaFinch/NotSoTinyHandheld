@@ -31,7 +31,7 @@ Caches
 	512x2x4 (4k, 11)	256x2x8	(4k, 9)		(8k, 20)	<-- this one
 	256x2x8 (4k, 9)		256x2x8 (4k, 9)		(8k, 18)
 	
-	With 3 remaining BRAMs, we may allocate 512-1024 bytes of bootrom
+	With 4 remaining BRAMs, we may allocate 512-1024 bytes of bootrom
 	
 	Block Size - 1024x 2x 4 byte (8k)
 	data: 64 bits

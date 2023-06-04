@@ -88,7 +88,7 @@ begin
 					init_counter <= std_logic_vector(unsigned(init_counter) - 1);
 				
 					case init_counter is
-						when "11"	=> -- write C0: device 2, default 111, c/d high
+						when "11"	=> -- write C0: device 2, default 111, no recieve, c/d high
 							spi_addr	<= "01";
 							spi_in		<= "01110001";
 							spi_write	<= '1';

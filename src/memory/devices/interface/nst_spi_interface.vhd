@@ -51,6 +51,7 @@ end nst_spi_interface;
 --		C0
 --			Device					bit 7:5		Controls the select lines
 --			Device Default			bit 4		All bits of sel are set to this when idle/disabled
+--			Recieve Data			bit 1		If set, data is recieved during transmit. If clear, the recieve buffer is unaffected by transmit.
 --			Command/Data			bit 0		The command/data pin is set to this when the device is enabled
 --
 --		C1

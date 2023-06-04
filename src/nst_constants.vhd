@@ -14,8 +14,8 @@ use work.nst_types.all;
 package nst_constants is
 	-- memory map
 	type memory_mapping is record
-		start_address:	unsigned;
-		end_address:	unsigned;
+		start_address:	unsigned(31 downto 0);
+		end_address:	unsigned(31 downto 0);
 		cachable:		boolean;
 	end record;
 	

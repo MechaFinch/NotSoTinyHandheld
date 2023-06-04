@@ -13,10 +13,10 @@ library ieee;
 use ieee.std_logic_1164.all;
 use work.nst_types.all;
 
-library efxphysicallib;
-use efxphysicallib.efxcomponents.all;
+--library efxphysicallib;
+--use efxphysicallib.efxcomponents.all;
 
-entity nst_insturction_cache is
+entity nst_instruction_cache is
 	port (
 		-- cpu side
 		address:	in nst_dword_t;				-- address the cpu is reading
@@ -26,14 +26,59 @@ entity nst_insturction_cache is
 		-- memory side
 		mem_address:	out nst_dword_t;		-- address the cache is reading
 		mem_data:		in icache_block_data_t;	-- data block for the cache
+		mem_read:		out std_logic;
 		mem_ready:		in std_logic;
 		
 		-- clocking
-		exec_clk:	in std_logic;
+		exec_clk:	in std_logic
 	);
 end nst_instruction_cache;
 
 architecture a1 of nst_instruction_cache is
+	component EFX_RAM_5K is
+		generic (
+			WCLK_POLARITY:	std_logic;
+			WCLKE_POLARITY:	std_logic;
+			WE_POLARITY:	std_logic;
+			RCLK_POLARITY:	std_logic;
+			RE_POLARITY:	std_logic;
+			READ_WIDTH:		integer;
+			WRITE_WIDTH:	integer;
+			OUTPUT_REG:		std_logic;
+			WRITE_MODE:		string;
+			INIT_0:			std_logic_vector(255 downto 0);
+			INIT_1:			std_logic_vector(255 downto 0);
+			INIT_2:			std_logic_vector(255 downto 0);
+			INIT_3:			std_logic_vector(255 downto 0);
+			INIT_4:			std_logic_vector(255 downto 0);
+			INIT_5:			std_logic_vector(255 downto 0);
+			INIT_6:			std_logic_vector(255 downto 0);
+			INIT_7:			std_logic_vector(255 downto 0);
+			INIT_8:			std_logic_vector(255 downto 0);
+			INIT_9:			std_logic_vector(255 downto 0);
+			INIT_A:			std_logic_vector(255 downto 0);
+			INIT_B:			std_logic_vector(255 downto 0);
+			INIT_C:			std_logic_vector(255 downto 0);
+			INIT_D:			std_logic_vector(255 downto 0);
+			INIT_E:			std_logic_vector(255 downto 0);
+			INIT_F:			std_logic_vector(255 downto 0);
+			INIT_10:		std_logic_vector(255 downto 0);
+			INIT_11:		std_logic_vector(255 downto 0);
+			INIT_12:		std_logic_vector(255 downto 0);
+			INIT_13:		std_logic_vector(255 downto 0)
+		);
+		
+		port (
+			WCLK, WE, WCLKE:	in std_logic;
+			RCLK, RE:			in std_logic;
+			
+			WDATA:	in std_logic_vector(19 downto 0);
+			WADDR:	in std_logic_vector(7 downto 0);
+			RADDR:	in std_logic_vector(7 downto 0);
+			RDATA:	out std_logic_vector(19 downto 0)
+		);
+	end component EFX_RAM_5K;
+
 	-- a block; data with tag and dirty bit
 	type icache_block_t is record
 		data: 	icache_block_data_t; -- array of 8 bytes
@@ -58,22 +103,85 @@ architecture a1 of nst_instruction_cache is
 	signal current_output:	icache_set_t;
 	
 	signal bram_write_enable:	std_logic;
-	signal bram_address:		std_logic_vector(11 downto 0);
+	signal bram_address:		std_logic_vector(7 downto 0);
 	
 	signal bram_inputs:		bram_data_t;
 	signal bram_outputs:	bram_data_t;
 begin
 
-	-- BRAM address is the set index subset of the address
-	bram_addr_proc: process (all) begin
-		-- only the upper 8 bits of address are used
-		-- primitives doc says to leave lines not used by the mode unconnected
-		bram_address(11 downto 4)	<= address(10 downto 3);
-		bram_address(3 downto 0)	<= open;
-	end process;
+	-- BRAM independent operation
+	-- thanks to the read-only nature of the instruction cache, there is zero synchronous logic
+	operating_proc: process (all) is
+		variable input_tag:					std_logic_vector(20 downto 0);
+		variable b0_matches, b1_matches:	std_logic;
+	begin
+		-- data is read synchronously, but we can use it asynchronously
+		-- we can use this to automatically mark ready upon miss read
+		input_tag := address(31 downto 11);
+		
+		-- If the tag matches, the block is clean, and the set is valid, it's good to go
+		b0_matches := '1' when current_output.b0.tag = input_tag else '0';
+		b1_matches := '1' when current_output.b1.tag = input_tag else '0';
+		
+		mem_address			<= address;
+		current_input.valid	<= '1';
+		
+		-- brams are written when blocks match (to update LRU) or when data is ready when reading
+		bram_write_enable	<= (mem_read and mem_ready) or b0_matches or b1_matches;
 	
+		if b0_matches and current_output.b0.clean then
+			-- output b0, ready
+			data_ready	<= '1';
+			data		<= current_output.b0.data;
+			
+			mem_read			<= '0';
+			current_input.b0	<= current_output.b0;
+			current_input.b1	<= current_output.b1;
+			current_input.lru	<= '1';
+			current_input.valid	<= current_output.valid;
+		elsif b1_matches and current_output.b1.clean then
+			-- output b1, ready
+			data_ready	<= '1';
+			data		<= current_output.b1.data;
+			
+			mem_read		<= '0';
+			current_input.b0	<= current_output.b0;
+			current_input.b1	<= current_output.b1;
+			current_input.lru	<= '0';
+			current_input.valid	<= current_output.valid;
+		else
+			-- miss - read into appropriate block
+			data_ready		<= '0';
+			
+			mem_read			<= '1';
+			current_input.valid	<= '1';
+			
+			if current_output.lru = '0' then
+				-- read into b0
+				data	<= current_output.b0.data;
+				
+				current_input.b0.data	<= mem_data;
+				current_input.b0.tag	<= input_tag;
+				current_input.b0.clean	<= '1';
+				current_input.b1		<= current_output.b1;
+				current_input.lru		<= '1';
+			else
+				-- read into b1
+				data	<= current_output.b1.data;
+				
+				current_input.b0		<= current_output.b0;
+				current_input.b1.data	<= mem_data;
+				current_input.b1.tag	<= input_tag;
+				current_input.b1.clean	<= '1';
+				current_input.lru		<= '0';
+			end if;
+		end if;
+	end process;
+
 	-- handles renaming input/output as a cache set record and as bram signals
 	bram_mapping_proc: process (all) begin
+		bram_address(7 downto 0)	<= address(10 downto 3);
+		
 		-- BRAM input mapping
 		-- block 0: bits 19:0 of b0; bits 19:0 of b0's data
 		bram_inputs(0)(7 downto 0)		<= current_input.b0.data(0);
@@ -164,13 +272,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -201,9 +309,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(0),
+			WDATA	=> bram_inputs(0),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(0)
+			RDATA	=> bram_outputs(0)
 		);
 	
 	-- block 1: bits 39:20 of the set; bits 39:20 of b0; bits 39:20 of b0's data
@@ -212,13 +320,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -249,9 +357,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(1),
+			WDATA	=> bram_inputs(1),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(1)
+			RDATA	=> bram_outputs(1)
 		);
 		
 	-- block 2: bits 59:40 of the set; bits 59:40 of b0; bits 59:40 of b0's data
@@ -260,13 +368,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -297,9 +405,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(2),
+			WDATA	=> bram_inputs(2),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(2)
+			RDATA	=> bram_outputs(2)
 		);
 		
 	-- block 3: bits 79:60 of the set; bits 79:60 of b0; bits 63:60 of b0's data, 15:0 of b0's tag
@@ -308,13 +416,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -345,9 +453,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(3),
+			WDATA	=> bram_inputs(3),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(3)
+			RDATA	=> bram_outputs(3)
 		);
 		
 	-- block 4: bits 99:80 of the set; bits 85:80 of b0, 13:0 of b1; bits 20:16 of b0's tag, b0's clean bit, bits 13:0 of b1's data
@@ -356,13 +464,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -393,9 +501,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(4),
+			WDATA	=> bram_inputs(4),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(4)
+			RDATA	=> bram_outputs(4)
 		);
 		
 	-- block 5: bits 119:100 of the set; bits 33:14 of b1; bits 33:14 of b1's data
@@ -404,13 +512,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -441,9 +549,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(5),
+			WDATA	=> bram_inputs(5),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(5)
+			RDATA	=> bram_outputs(5)
 		);
 		
 	-- block 6: bits 139:120 of the set; bits 53:34 of b1; bits 53:34 of b1's data
@@ -452,13 +560,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -489,9 +597,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(6),
+			WDATA	=> bram_inputs(6),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(6)
+			RDATA	=> bram_outputs(6)
 		);
 		
 	-- block 7: bits 159:140 of the set; bits 73:54 of b1; bits 63:54 of b1's data, 9:0 of b1's tag
@@ -500,13 +608,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -537,9 +645,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(7),
+			WDATA	=> bram_inputs(7),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(7)
+			RDATA	=> bram_outputs(7)
 		);
 		
 	-- block 8: bits 173:160 of the set; bits 85:74 of b1, set status bits; bits 20:10 of b1's tag, b1's clean bit, set LRU bit, set valid bit
@@ -548,13 +656,13 @@ begin
 			READ_WIDTH	=> 20,
 			WRITE_WIDTH	=> 20,
 			OUTPUT_REG	=> '0',
-			WRITE_MODE	=> "READ_UNKNOWN", 
+			WRITE_MODE	=> "WRITE_FIRST", 
 			
 			WCLK_POLARITY	=> '1',	-- rising edge
 			WCLKE_POLARITY	=> '1',
 			WE_POLARITY		=> '1',
 			
-			RCLK_POLARITY	=> '0',	-- falling edge
+			RCLK_POLARITY	=> '1',	-- rising edge
 			RE_POLARITY		=> '1',
 		
 			INIT_0	=> 256x"0000000000000000000000000000000000000000000000000000000000000000",
@@ -585,9 +693,9 @@ begin
 			RCLK	=> exec_clk,
 			RE		=> '1',
 			WADDR	=> bram_address,
-			WDATA	=> bram_outputs(8),
+			WDATA	=> bram_inputs(8),
 			RADDR	=> bram_address,
-			RDATA	=> bram_inputs(8)
+			RDATA	=> bram_outputs(8)
 		);
 		
 	

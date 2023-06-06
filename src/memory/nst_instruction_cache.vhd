@@ -97,91 +97,121 @@ architecture a1 of nst_instruction_cache is
 		valid:	std_logic;	-- 0 = invalid, 1 = valid
 	end record;
 	
+	-- bram interfacing stuff
 	type bram_data_t is array (8 downto 0) of std_logic_vector(19 downto 0);
 	
 	signal current_input:	icache_set_t;
 	signal current_output:	icache_set_t;
 	
 	signal bram_write_enable:	std_logic;
-	signal bram_address:		std_logic_vector(7 downto 0);
+	signal bram_read_address:	std_logic_vector(7 downto 0);
+	signal bram_write_address:	std_logic_vector(7 downto 0) := 8x"FF";
 	
 	signal bram_inputs:		bram_data_t;
 	signal bram_outputs:	bram_data_t;
+	
+	signal working_tag:	std_logic_vector(20 downto 0) := 21x"1FFFFF";
+	signal working_set:	std_logic_vector(7 downto 0) := 8x"FF";
 begin
-
 	-- BRAM independent operation
-	-- thanks to the read-only nature of the instruction cache, there is zero synchronous logic
 	operating_proc: process (all) is
-		variable input_tag:					std_logic_vector(20 downto 0);
-		variable b0_matches, b1_matches:	std_logic;
+		variable input_tag:			std_logic_vector(20 downto 0);
+		variable input_set:			std_logic_vector(7 downto 0);
+		variable b0_matches_w:		std_logic;
+		variable b1_matches_w:		std_logic;
+		--variable b0_matches_i:		std_logic;
+		--variable b1_matches_i:		std_logic;
+		variable tag_matches:		std_logic;
+		variable set_matches:		std_logic;
+		variable address_matches:	std_logic;
 	begin
 		-- data is read synchronously, but we can use it asynchronously
 		-- we can use this to automatically mark ready upon miss read
-		input_tag := address(31 downto 11);
+		input_tag	:= address(31 downto 11);
+		input_set	:= address(10 downto 3);
 		
 		-- If the tag matches, the block is clean, and the set is valid, it's good to go
-		b0_matches := '1' when current_output.b0.tag = input_tag else '0';
-		b1_matches := '1' when current_output.b1.tag = input_tag else '0';
+		set_matches		:= '1' when input_set = working_set else '0';
+		tag_matches		:= '1' when input_tag = working_tag else '0';
+		address_matches	:= tag_matches and set_matches;
+		
+		b0_matches_w	:= '1' when current_output.b0.tag = working_tag else '0';
+		b1_matches_w	:= '1' when current_output.b1.tag = working_tag else '0';
+		--b0_matches_i	:= '1' when current_output.b0.tag = input_tag else '0';
+		--b1_matches_i	:= '1' when current_output.b1.tag = input_tag else '0';
 		
 		mem_address			<= address;
 		current_input.valid	<= '1';
 		
 		-- brams are written when blocks match (to update LRU) or when data is ready when reading
-		bram_write_enable	<= (mem_read and mem_ready) or b0_matches or b1_matches;
-	
-		if b0_matches and current_output.b0.clean then
-			-- output b0, ready
-			data_ready	<= '1';
-			data		<= current_output.b0.data;
-			
+		bram_write_enable	<= (mem_read and mem_ready) or b0_matches_w or b1_matches_w;
+		bram_read_address	<= input_set;
+		bram_write_address	<= working_set; --address(10 downto 3);
+		
+		if rising_edge(exec_clk) then
+			working_set	<= input_set;
+			working_tag	<= input_tag;
+		end if;
+		
+		if b0_matches_w or b1_matches_w then
 			mem_read			<= '0';
+			data_ready			<= '1';
 			current_input.b0	<= current_output.b0;
 			current_input.b1	<= current_output.b1;
-			current_input.lru	<= '1';
 			current_input.valid	<= current_output.valid;
-		elsif b1_matches and current_output.b1.clean then
-			-- output b1, ready
-			data_ready	<= '1';
-			data		<= current_output.b1.data;
 			
-			mem_read		<= '0';
-			current_input.b0	<= current_output.b0;
-			current_input.b1	<= current_output.b1;
-			current_input.lru	<= '0';
-			current_input.valid	<= current_output.valid;
+			if b0_matches_w then
+				data				<= current_output.b0.data;
+				current_input.lru	<= '1';
+			else -- b1_matches_w
+				data				<= current_output.b1.data;
+				current_input.lru	<= '0';
+			end if;
 		else
 			-- miss - read into appropriate block
-			data_ready		<= '0';
-			
-			mem_read			<= '1';
-			current_input.valid	<= '1';
+			mem_read	<= '1';
+			data_ready	<= '0';
 			
 			if current_output.lru = '0' then
-				-- read into b0
-				data	<= current_output.b0.data;
-				
-				current_input.b0.data	<= mem_data;
-				current_input.b0.tag	<= input_tag;
-				current_input.b0.clean	<= '1';
-				current_input.b1		<= current_output.b1;
-				current_input.lru		<= '1';
+				data <= current_output.b0.data;
 			else
-				-- read into b1
-				data	<= current_output.b1.data;
-				
-				current_input.b0		<= current_output.b0;
-				current_input.b1.data	<= mem_data;
-				current_input.b1.tag	<= input_tag;
-				current_input.b1.clean	<= '1';
-				current_input.lru		<= '0';
+				data <= current_output.b1.data;
+			end if;
+			
+			if address_matches then
+				-- read in progress, writing new data
+				if current_output.lru = '0' then
+					-- read into b0
+					current_input.b0.data	<= mem_data;
+					current_input.b0.tag	<= working_tag; --input_tag;
+					current_input.b0.clean	<= '1';
+					current_input.b1		<= current_output.b1;
+					current_input.lru		<= '1';
+				else
+					-- read into b1
+					data	<= current_output.b1.data;
+					
+					current_input.b0		<= current_output.b0;
+					current_input.b1.data	<= mem_data;
+					current_input.b1.tag	<= working_tag; --input_tag;
+					current_input.b1.clean	<= '1';
+					current_input.lru		<= '0';
+				end if;
+			else
+				-- read is being started, lingering data needs to be written and working set needs to be read
+				current_input.b0	<= current_output.b0;
+				current_input.b1	<= current_output.b1;
+				current_input.lru	<= current_output.lru;
 			end if;
 		end if;
 	end process;
+	
+	-- it may be beneficial to infer the BRAMs instead, in which case their functionality should be
+	-- replicated here instead
 
 	-- handles renaming input/output as a cache set record and as bram signals
-	bram_mapping_proc: process (all) begin
-		bram_address(7 downto 0)	<= address(10 downto 3);
-		
+	-- using process (all) fails in simulation, because fuck you
+	bram_mapping_proc: process (current_input, bram_outputs) begin
 		-- BRAM input mapping
 		-- block 0: bits 19:0 of b0; bits 19:0 of b0's data
 		bram_inputs(0)(7 downto 0)		<= current_input.b0.data(0);
@@ -308,9 +338,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(0),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(0)
 		);
 	
@@ -356,9 +386,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(1),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(1)
 		);
 		
@@ -404,9 +434,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(2),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(2)
 		);
 		
@@ -452,9 +482,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(3),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(3)
 		);
 		
@@ -500,9 +530,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(4),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(4)
 		);
 		
@@ -548,9 +578,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(5),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(5)
 		);
 		
@@ -596,9 +626,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(6),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(6)
 		);
 		
@@ -644,9 +674,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(7),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(7)
 		);
 		
@@ -692,9 +722,9 @@ begin
 			WCLKE	=> '1',
 			RCLK	=> exec_clk,
 			RE		=> '1',
-			WADDR	=> bram_address,
+			WADDR	=> bram_write_address,
 			WDATA	=> bram_inputs(8),
-			RADDR	=> bram_address,
+			RADDR	=> bram_read_address,
 			RDATA	=> bram_outputs(8)
 		);
 		

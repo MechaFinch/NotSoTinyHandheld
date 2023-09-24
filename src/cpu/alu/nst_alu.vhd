@@ -38,9 +38,9 @@ entity nst_alu is
 		
 		-- control
 		operation:	in std_logic_vector(3 downto 0);	-- selects between adder, mul, div, logic
-		packed_4:		in std_logic;
-		packed_8:		in std_logic;
-		short:			in std_logic;	-- use 8 bit values
+		packed_4:	in std_logic;
+		packed_8:	in std_logic;
+		short:		in std_logic;	-- use 8 bit values
 		
 		-- adder control
 		subtract:		in std_logic;	-- subtract

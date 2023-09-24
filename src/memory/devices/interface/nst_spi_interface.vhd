@@ -43,19 +43,19 @@ end nst_spi_interface;
 --		D	3
 --
 --	Status Bytes
---		S0
+--		S0	0
 --			Read Full				bit 1		Set when read full; data can be read
 --			Transmit Empty			bit	0		Set when transmit empty; data can be written
 --
 --	Configuration Bytes
---		C0
+--		C0	1
 --			Device					bit 7:5		Controls the select lines
 --			Device Default			bit 4		All bits of sel are set to this when idle/disabled
 --			Recieve Data			bit 1		If set, data is recieved during transmit. If clear, the recieve buffer is unaffected by transmit.
 --			Command/Data			bit 0		The command/data pin is set to this when the device is enabled
 --
---		C1
---			Clock Divider			bit 6:4		Selects the clock division bit (divide by 2^n)
+--		C1	2
+--			Clock Divider			bit 7:4		Selects the clock division bit (divide by 2^n)
 --			Idle Clock				bit 3		If set, the clock will continue while idle
 --			Enable TE Interrupts	bit 2		If set, interrupt will be set while S0 Transmit Empty is set
 --			Enable RF Interrupts	bit 1		If set, interrupt will be set while S0 Read Full is set
@@ -83,8 +83,7 @@ architecture a1 of nst_spi_interface is
 	end record;
 	
 	type c1_t is record
-		unused:					std_logic;
-		clock_divider:			std_logic_vector(2 downto 0);
+		clock_divider:			std_logic_vector(3 downto 0);
 		idle_clock:				std_logic;
 		enable_te_interrupts:	std_logic;
 		enable_rf_interrupts:	std_logic;
@@ -93,7 +92,7 @@ architecture a1 of nst_spi_interface is
 	
 	-- clock stuff
 	signal spi_clk_divided:		std_logic := '0';
-	signal clk_divider_counter:	std_logic_vector(6 downto 0) := (others => '0');
+	signal clk_divider_counter:	std_logic_vector(14 downto 0) := (others => '0');
 	
 	-- status bits
 	signal read_full:			std_logic := '0';
@@ -105,7 +104,7 @@ architecture a1 of nst_spi_interface is
 	
 	-- configuration bits
 	signal c0:	c0_t := (3x"7", '1', 3x"0", '0');
-	signal c1:	c1_t := ('0', 3x"0", '0', '0', '0', '0');
+	signal c1:	c1_t := (4x"0", '0', '0', '0', '0');
 	
 	-- internal state
 	signal transmitting:		std_logic := '0';
@@ -174,13 +173,21 @@ begin
 	
 	clock_sel_proc: process (all) begin
 		with c1.clock_divider select spi_clk_divided <=
-			clk_divider_counter(6)	when "111",		-- 128
-			clk_divider_counter(5)	when "110",		-- 64
-			clk_divider_counter(4)	when "101",		-- 32
-			clk_divider_counter(3)	when "100",		-- 16
-			clk_divider_counter(2)	when "011",		-- 8
-			clk_divider_counter(1)	when "010",		-- 4
-			clk_divider_counter(0)	when "001",		-- 2
+			clk_divider_counter(14)	when "1111",	-- 32768
+			clk_divider_counter(13)	when "1110",	-- 16384
+			clk_divider_counter(12)	when "1101",	-- 8192
+			clk_divider_counter(11)	when "1100",	-- 4069
+			clk_divider_counter(10)	when "1011",	-- 2048
+			clk_divider_counter(9)	when "1010",	-- 1024
+			clk_divider_counter(8)	when "1001",	-- 512
+			clk_divider_counter(7)	when "1000",	-- 256
+			clk_divider_counter(6)	when "0111",	-- 128
+			clk_divider_counter(5)	when "0110",	-- 64
+			clk_divider_counter(4)	when "0101",	-- 32
+			clk_divider_counter(3)	when "0100",	-- 16
+			clk_divider_counter(2)	when "0011",	-- 8
+			clk_divider_counter(1)	when "0010",	-- 4
+			clk_divider_counter(0)	when "0001",	-- 2
 			spi_clk					when others;	-- 1
 	end process;
 	
@@ -237,8 +244,7 @@ begin
 							data_out(3 downto 1)	<= c0.unused;
 							data_out(0)				<= c0.command_data;
 			
-			when 2x"2" =>	data_out(7)				<= c1.unused;
-							data_out(6 downto 4)	<= c1.clock_divider;
+			when 2x"2" =>	data_out(7 downto 4)	<= c1.clock_divider;
 							data_out(3)				<= c1.idle_clock;
 							data_out(2)				<= c1.enable_te_interrupts;
 							data_out(1)				<= c1.enable_rf_interrupts;
@@ -260,8 +266,7 @@ begin
 						c0.command_data		<= data_in(0);
 					
 					when 2x"2" => -- C1
-						c1.unused				<= data_in(7);
-						c1.clock_divider		<= data_in(6 downto 4);
+						c1.clock_divider		<= data_in(7 downto 4);
 						c1.idle_clock			<= data_in(3);
 						c1.enable_te_interrupts	<= data_in(2);
 						c1.enable_rf_interrupts	<= data_in(1);

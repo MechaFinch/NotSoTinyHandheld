@@ -1,0 +1,21 @@
+--
+-- Mechafinch
+-- NST Handheld Project
+--
+-- nst_cache_control
+-- Memory-mapped device for controlling the caches
+-- Currently only used to clear the caches
+-- 
+-- Mapping
+--	0:	Clear instruction cache
+--	1:	Clear data cache
+--
+
+-- TODO
+
+-- Operation
+-- When anything is written to address 0, pulse the cache clear control signal of the instruction
+-- cache for a couple cycles
+-- When anything is written to address 1, pulse the cache clear control signal of the data cache
+-- for a couple cycles
+-- thats it

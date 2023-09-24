@@ -11,6 +11,7 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 use work.nst_types.all;
 
 --library efxphysicallib;
@@ -28,6 +29,8 @@ entity nst_instruction_cache is
 		mem_data:		in icache_block_data_t;	-- data block for the cache
 		mem_read:		out std_logic;
 		mem_ready:		in std_logic;
+		
+		clear:	in std_logic; -- initiate a cache clear
 		
 		-- clocking
 		exec_clk:	in std_logic
@@ -112,6 +115,9 @@ architecture a1 of nst_instruction_cache is
 	
 	signal working_tag:	std_logic_vector(20 downto 0) := 21x"1FFFFF";
 	signal working_set:	std_logic_vector(7 downto 0) := 8x"FF";
+	
+	signal clear_counter:	std_logic_vector(7 downto 0) := 8x"00";
+	signal clearing:		std_logic := '0';
 begin
 	-- BRAM independent operation
 	operating_proc: process (all) is
@@ -144,16 +150,47 @@ begin
 		current_input.valid	<= '1';
 		
 		-- brams are written when blocks match (to update LRU) or when data is ready when reading
-		bram_write_enable	<= (mem_read and mem_ready) or b0_matches_w or b1_matches_w;
+		bram_write_enable	<= (mem_read and mem_ready) or b0_matches_w or b1_matches_w or clearing;
 		bram_read_address	<= input_set;
-		bram_write_address	<= working_set; --address(10 downto 3);
+		
+		if clearing then
+			bram_write_address	<= clear_counter;
+		else
+			bram_write_address	<= working_set; --address(10 downto 3);
+		end if;
 		
 		if rising_edge(exec_clk) then
 			working_set	<= input_set;
 			working_tag	<= input_tag;
+			
+			if clear then
+				clearing		<= '1';
+				clear_counter	<= 8x"FF";
+			elsif clear_counter = 8x"00" then
+				clearing	<= '0';
+			else
+				clear_counter	<= std_logic_vector(unsigned(clear_counter) - 1);
+			end if;
 		end if;
 		
-		if b0_matches_w or b1_matches_w then
+		if clearing then
+			mem_read	<= '0';
+			data_ready	<= '0';
+			data		<= (others => (others => '0'));
+		
+			current_input.b0	<= (
+				data	=> (others => 8x"00"),
+				tag		=> (others => '0'),
+				clean	=> '0'
+			);
+			current_input.b1	<= (
+				data	=> (others => 8x"00"),
+				tag		=> (others => '0'),
+				clean	=> '0'
+			);
+			current_input.lru	<= '0';
+			current_input.valid	<= '0';
+		elsif b0_matches_w or b1_matches_w then
 			mem_read			<= '0';
 			data_ready			<= '1';
 			current_input.b0	<= current_output.b0;

@@ -113,7 +113,16 @@ begin
 	-- TODO
 	
 	-- Operation
-	--	
+	--	When a read is requested
+	--		If a write is ongoing, the ready signal is clear.
+	--		If no write is ongoing
+	--			The requested address is latched when the set is read.
+	--			If the set hits, the block can be output and the ready signal set.
+	--			If the set misses, the ready signal is clear and a block read begins.
+	--	When reading a block
+	--		If the 
+	--		Memory is read from the aligned address
+	--		Once memory is ready, the read data can be written to bram
 	--
 	
 	-- it may be beneficial to infer the BRAMs instead, in which case their functionality should be

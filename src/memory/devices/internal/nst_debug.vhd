@@ -78,11 +78,11 @@ architecture a1 of nst_debug is
 	signal spi_write:	std_logic := '0';
 begin	
 	-- process for controlling spi
-	spi_control: process (mem_clk) begin
+	spi_control: process (exec_clk) begin
 		-- memory actions take place on the rising edge, change on the falling
-		if falling_edge(mem_clk) then
+		if falling_edge(exec_clk) then
 			-- are we on
-			if enabled then
+			if debug_enabled then
 				-- initialization
 				if init_counter /= "00" then
 					init_counter <= std_logic_vector(unsigned(init_counter) - 1);
@@ -90,12 +90,12 @@ begin
 					case init_counter is
 						when "11"	=> -- write C0: device 2, default 111, no recieve, c/d high
 							spi_addr	<= "01";
-							spi_in		<= "01110001";
+							spi_in		<= "10110001";
 							spi_write	<= '1';
 						
 						when "10"	=> -- write C1: clock div 128, no idle clk, no interrupts, device enabled
 							spi_addr	<= "10";
-							spi_in		<= "01110001";
+							spi_in		<= "11010001";
 						
 						when others	=> -- stop writing
 							spi_write	<= '0';
@@ -129,10 +129,10 @@ begin
 						-- c/d low on counter zero, c/d high on counter 2
 						if byte_counter = "000000" then
 							spi_addr	<= "01";
-							spi_in		<= "01110000";
+							spi_in		<= "10110000";
 						elsif byte_counter = "000010" then
 							spi_addr	<= "01";
-							spi_in		<= "01110001";
+							spi_in		<= "10110001";
 						else
 							-- otherwise write the byte
 							spi_addr	<= "11";
@@ -140,7 +140,6 @@ begin
 						end if;
 					end if;
 				end if;
-			end if;
 			else
 				-- disabled - reset initialization
 				init_counter <= "11";
@@ -234,7 +233,6 @@ begin
 			data_out	=> spi_out,
 			exec_clk	=> exec_clk,
 			spi_clk		=> spi_clk_in,
-			mem_clk		=> mem_clk,
 			mem_read	=> '0',
 			mem_write	=> spi_write,
 			interrupt	=> open,

@@ -21,6 +21,7 @@ architecture tb of icache_test is
 	signal mem_data:	icache_block_data_t := (others => (others => '0'));
 	signal mem_read:	std_logic;
 	signal mem_ready:	std_logic := '0';
+	signal clear:		std_logic := '0';
 	signal exec_clk:	std_logic := '0';
 	
 	constant period: time := 15625 ps;
@@ -53,6 +54,10 @@ begin
 					
 					if i < 8 then
 						naddr <= tra(i);
+					elsif i = 8 then
+						clear <= '1';
+					elsif i = 9 then
+						clear <= '0';
 					end if;
 					
 					i := i + 1;
@@ -145,6 +150,8 @@ begin
 			mem_data	=> mem_data,
 			mem_read	=> mem_read,
 			mem_ready	=> mem_ready,
+			
+			clear	=> clear,
 			
 			exec_clk	=> exec_clk
 		);

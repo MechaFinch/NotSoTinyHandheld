@@ -39,7 +39,7 @@ entity nst_chip is
 		-- Device Signals
 		-- PLL clocks
 		device_exec_clk:	in std_logic;	-- 64 MHz	TBD based on cpu performance
-		device_mem_clk:		in std_logic;	-- 4 MHz	TBD based on breadboard memory performance, potentially up to 16 MHz
+		device_ram_clk:		in std_logic;	-- 4 MHz	TBD based on breadboard memory performance, potentially up to 16 MHz
 		device_spi_clk:		in std_logic;	-- 8 MHz	ILI9341 max spi clock is 10 MHz
 		device_10khz_clk:	in std_logic	-- 10 kHz	from the oscillator
 	);
@@ -80,7 +80,7 @@ begin
 			ecount <= std_logic_vector(unsigned(ecount) + 1);
 		end if;
 		
-		if rising_edge(device_mem_clk) then
+		if rising_edge(device_ram_clk) then
 			mcount <= std_logic_vector(unsigned(mcount) + 1);
 		end if;
 		
@@ -124,8 +124,10 @@ begin
 			mcount	=> mcount,
 			
 			exec_clk	=> device_exec_clk,
-			mem_clk		=> device_mem_clk,
-			spi_clk_in	=> device_10khz_clk,
+			mem_clk		=> device_ram_clk,
+			spi_clk_in	=> device_ram_clk,
+			
+			debug_enabled	=> '1',
 			
 			spi_sel		=> spi_sel,
 			spi_cd		=> spi_cd,

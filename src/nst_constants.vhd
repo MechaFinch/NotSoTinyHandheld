@@ -16,30 +16,42 @@ package nst_constants is
 	type memory_mapping is record
 		start_address:	unsigned(31 downto 0);
 		end_address:	unsigned(31 downto 0);
+		op_size:		integer range 1 to 2;
 		cachable:		boolean;
 	end record;
 	
 	constant RAM_INTERFACE_MAPPING:	memory_mapping := (
 		start_address	=> x"0000_0000",	-- 1 MB
 		end_address		=> x"000F_FFFF",
+		op_size			=> 2,
 		cachable		=> true
 	);
 	
 	constant SPI_INTERFACE_MAPPING: memory_mapping := (
 		start_address	=> x"8000_0000",	-- 4 bytes
 		end_address		=> x"8000_0003",
+		op_size			=> 1,
 		cachable		=> false
 	);
 	
 	constant KEYPAD_INTERFACE_MAPPING: memory_mapping := (
-		start_address	=> x"8001_0000",	-- 4 bytes (TBD)
-		end_address		=> x"8001_0003",
+		start_address	=> x"8001_0000",	-- 8 bytes
+		end_address		=> x"8001_0007",
+		op_size			=> 1,
+		cachable		=> false
+	);
+	
+	constant CACHE_CONTROL_MAPPING: memory_mapping := (
+		start_address	=> x"8002_0000",	-- 2 bytes
+		end_address		=> x"8002_0001",
+		op_size			=> 1,
 		cachable		=> false
 	);
 	
 	constant BOOTROM_MAPPING: memory_mapping := (
 		start_address	=> x"FFFF_FC00", -- 1 kB
 		end_address		=> x"FFFF_FFFF",
+		op_size			=> 2,
 		cachable		=> true
 	);
 	

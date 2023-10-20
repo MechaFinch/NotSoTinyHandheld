@@ -18,16 +18,17 @@ use efxphysicallib.efxcomponents.all;
 
 entity nst_data_cache is
 	port (
-		-- cpu side
-		address:	in nst_dword_t;
-		data_in:	in dcache_block_data_t;
-		data_out:	out dcache_block_data_t;
+		-- requested operation from memory manager
+		request_address		in nst_dword_t;
+		request_data_in		in dcache_block_data_t;
+		request_data_out	out dcache_block_data_t;
 		
-		cpu_read:	in std_logic;
-		cpu_write:	in std_logic;
-		data_ready:	out std_logic;
+		request_read	in std_logic;
+		request_write	in std_logic;
+		correct_miss	in std_logic; -- if unset, the cache will ignore misses
+		request_ready	out std_logic;
 		
-		-- memory side
+		-- memory operation requested by cache
 		mem_address:	out nst_dword_t;
 		mem_data_in:	in dcache_block_data_t;
 		mem_data_out:	out dcache_block_data_t;
@@ -35,6 +36,8 @@ entity nst_data_cache is
 		mem_read:	out std_logic;
 		mem_write:	out std_logic;
 		mem_ready:	in std_logic;
+		
+		clear:	in std_logic;
 		
 		-- clocking
 		exec_clk:	in std_logic;

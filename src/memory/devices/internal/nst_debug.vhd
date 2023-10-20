@@ -88,14 +88,14 @@ begin
 					init_counter <= std_logic_vector(unsigned(init_counter) - 1);
 				
 					case init_counter is
-						when "11"	=> -- write C0: device 2, default 111, no recieve, c/d high
+						when "11"	=> -- write C0: device 7, default 000, no recieve, c/d high
 							spi_addr	<= "01";
-							spi_in		<= "10110001";
+							spi_in		<= "11100001";
 							spi_write	<= '1';
 						
 						when "10"	=> -- write C1: clock div 128, no idle clk, no interrupts, device enabled
 							spi_addr	<= "10";
-							spi_in		<= "11010001";
+							spi_in		<= "00000001";
 						
 						when others	=> -- stop writing
 							spi_write	<= '0';
@@ -233,7 +233,7 @@ begin
 			data_out	=> spi_out,
 			exec_clk	=> exec_clk,
 			spi_clk		=> spi_clk_in,
-			mem_read	=> '0',
+			mem_read	=> spi_read,
 			mem_write	=> spi_write,
 			interrupt	=> open,
 			

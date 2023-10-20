@@ -125,7 +125,7 @@ begin
 			
 			exec_clk	=> device_exec_clk,
 			mem_clk		=> device_ram_clk,
-			spi_clk_in	=> device_ram_clk,
+			spi_clk_in	=> device_10khz_clk,
 			
 			debug_enabled	=> '1',
 			

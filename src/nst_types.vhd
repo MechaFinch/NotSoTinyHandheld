@@ -40,4 +40,19 @@ package nst_types is
 
 	-- word outputs of the bulk memory buffer
 	type bulk_data_t is array (19 downto 0) of nst_byte_t;
+	
+	-- shared enums
+	type device_id_t is (
+		-- internal
+		DEVICE_BROM,
+		DEVICE_CACHE_CONTROL,
+		DEVICE_DEBUG,
+		
+		-- external
+		DEVICE_RAM,
+		DEVICE_SPI,
+		DEVICE_KEY,
+		
+		DEVICE_NULL
+	);
 end nst_types;

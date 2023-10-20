@@ -172,23 +172,23 @@ begin
 	end process;
 	
 	clock_sel_proc: process (all) begin
-		with c1.clock_divider select spi_clk_divided <=
-			clk_divider_counter(14)	when "1111",	-- 32768
-			clk_divider_counter(13)	when "1110",	-- 16384
-			clk_divider_counter(12)	when "1101",	-- 8192
-			clk_divider_counter(11)	when "1100",	-- 4069
-			clk_divider_counter(10)	when "1011",	-- 2048
-			clk_divider_counter(9)	when "1010",	-- 1024
-			clk_divider_counter(8)	when "1001",	-- 512
-			clk_divider_counter(7)	when "1000",	-- 256
-			clk_divider_counter(6)	when "0111",	-- 128
-			clk_divider_counter(5)	when "0110",	-- 64
-			clk_divider_counter(4)	when "0101",	-- 32
-			clk_divider_counter(3)	when "0100",	-- 16
-			clk_divider_counter(2)	when "0011",	-- 8
-			clk_divider_counter(1)	when "0010",	-- 4
-			clk_divider_counter(0)	when "0001",	-- 2
-			spi_clk					when others;	-- 1
+		with c1.clock_divider select spi_clk_divided <=	--		64 MHz		8 MHz		10 kHz
+			clk_divider_counter(14)	when "1111",	-- 32768	1.95 kHz	244 Hz		0.31 Hz
+			clk_divider_counter(13)	when "1110",	-- 16384	3.91 kHz	488 Hz		0.61 Hz
+			clk_divider_counter(12)	when "1101",	-- 8192		7.81 kHz	977 Hz		1.22 Hz
+			clk_divider_counter(11)	when "1100",	-- 4069		15.63 kHz	1.95 kHz	2.44 Hz
+			clk_divider_counter(10)	when "1011",	-- 2048		31.25 kHz	3.91 kHz	4.88 Hz
+			clk_divider_counter(9)	when "1010",	-- 1024		62.5 kHz	7.81 kHz	9.77 Hz
+			clk_divider_counter(8)	when "1001",	-- 512		125 kHz		15.63 kHz	19.5 Hz
+			clk_divider_counter(7)	when "1000",	-- 256		250 kHz		31.25 kHz	39 Hz
+			clk_divider_counter(6)	when "0111",	-- 128		500 kHz		62.5 kHz	78 Hz
+			clk_divider_counter(5)	when "0110",	-- 64		1 MHz		125 kHz		156 Hz
+			clk_divider_counter(4)	when "0101",	-- 32		2 MHz		250 kHz		313 Hz
+			clk_divider_counter(3)	when "0100",	-- 16		4 MHz		500 kHz		625 Hz
+			clk_divider_counter(2)	when "0011",	-- 8		8 MHz		1 MHz		1.25 kHz
+			clk_divider_counter(1)	when "0010",	-- 4		16 MHz		2 MHz		2.5 kHz
+			clk_divider_counter(0)	when "0001",	-- 2		32 MHz		4 MHz		5 kHz
+			spi_clk					when others;	-- 1		64 MHz		8 MHz		10 kHz
 	end process;
 	
 	-- operating process

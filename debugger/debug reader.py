@@ -33,16 +33,19 @@ def run():
     device = SPIDevice("GP21", "GP20", "GP19", "GP18", "GP17")
     
     while True:
-        # discard data until DC low
-        while True:
-            #print(f"{cd_pin.value()}")
-            if cd_pin.value() == 0:
-                break
-        
-            #if len(device.rx_queue) > 0:
-            #   device.rx_queue.pop(0)
-        
         device.read_enabled = True
+        
+        # TODO
+        # FIGURE OUT CD PROCESSING
+        
+        # discard data until CD low
+        while True:
+            if len(device.rx_queue) > 0:
+                if device.cd_queue[0] != 0:
+                    break
+                else:
+                    device.rx_queue.pop(0)
+                    device.cd_queue.pop(0)
         
         # wait for data
         while True:
@@ -102,7 +105,11 @@ def run():
         print(f"Mem Clock Count:   {mcount}")
         print()
         print()
-        time.sleep_us(100_000)
+        
+        # clear any other data
+        device.rx_queue.clear()
+        
+        time.sleep_us(250_000)
         
 def pull_byte(d):
     return d.rx_queue.pop(0)

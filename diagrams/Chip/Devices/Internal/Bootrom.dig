@@ -3,64 +3,50 @@
   <version>1</version>
   <attributes>
     <entry>
-      <string>Label</string>
-      <string>SRAM</string>
-    </entry>
-    <entry>
       <string>Width</string>
-      <int>15</int>
+      <int>9</int>
     </entry>
   </attributes>
   <visualElements>
+    <visualElement>
+      <elementName>In</elementName>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>Address</string>
+        </entry>
+      </elementAttributes>
+      <pos x="560" y="220"/>
+    </visualElement>
     <visualElement>
       <elementName>Out</elementName>
       <elementAttributes>
         <entry>
           <string>Label</string>
-          <string>Memory Bus</string>
+          <string>Data</string>
         </entry>
       </elementAttributes>
-      <pos x="400" y="180"/>
+      <pos x="660" y="220"/>
+    </visualElement>
+    <visualElement>
+      <elementName>Out</elementName>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>Ready</string>
+        </entry>
+      </elementAttributes>
+      <pos x="660" y="260"/>
     </visualElement>
     <visualElement>
       <elementName>In</elementName>
       <elementAttributes>
         <entry>
           <string>Label</string>
-          <string>Address Low Clock</string>
+          <string>Read</string>
         </entry>
       </elementAttributes>
-      <pos x="220" y="180"/>
-    </visualElement>
-    <visualElement>
-      <elementName>In</elementName>
-      <elementAttributes>
-        <entry>
-          <string>Label</string>
-          <string>Address High Clock</string>
-        </entry>
-      </elementAttributes>
-      <pos x="220" y="220"/>
-    </visualElement>
-    <visualElement>
-      <elementName>In</elementName>
-      <elementAttributes>
-        <entry>
-          <string>Label</string>
-          <string>OE</string>
-        </entry>
-      </elementAttributes>
-      <pos x="220" y="260"/>
-    </visualElement>
-    <visualElement>
-      <elementName>In</elementName>
-      <elementAttributes>
-        <entry>
-          <string>Label</string>
-          <string>WE</string>
-        </entry>
-      </elementAttributes>
-      <pos x="220" y="300"/>
+      <pos x="560" y="260"/>
     </visualElement>
   </visualElements>
   <wires/>

@@ -1,0 +1,16 @@
+
+	Memory Map
+	A layout of the physical address space as well as some parts of RAM
+	
+
+	Physical Layout (see nst_constants.vhd in case of changes)
+0x0000_0000	- 0x000F_FFFF	RAM
+0x8000_0000	- 0x8000_0003	SPI interface
+0x8001_0000 - 0x8001_0007	Keypad interface
+0x8002_0000 - 0x8002_0001	Cache Control
+0xFFFF_FC00 - 0xFFFF_FFFF	BIOS ROM
+
+	RAM Layout
+0x0000_0000 - 0x0000_03FF	Interrupt Vector Table
+0x0000_0400 - 0x000F_BFFF	Free Memory
+0x000F_C000 - 0x000F_FFFF	BIOS Reserved

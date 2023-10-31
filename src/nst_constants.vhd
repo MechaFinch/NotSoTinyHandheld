@@ -20,6 +20,23 @@ package nst_constants is
 		cachable:		boolean;
 	end record;
 	
+	type device_id_t is (
+		-- special
+		DCACHE,
+	
+		-- internal
+		DEVICE_BROM,
+		DEVICE_CACHE_CONTROL,
+		DEVICE_DEBUG,
+		
+		-- external
+		DEVICE_RAM,
+		DEVICE_SPI,
+		DEVICE_KEY,
+		
+		DEVICE_NULL
+	);
+	
 	constant RAM_INTERFACE_MAPPING:	memory_mapping := (
 		start_address	=> x"0000_0000",	-- 1 MB
 		end_address		=> x"000F_FFFF",
@@ -235,13 +252,13 @@ package nst_constants is
 	constant OP_UNDEF_9F:		nst_byte_t := x"9F";
 	
 	constant OP_MUL_RIM:		nst_byte_t := x"A0";
-	constant OP_UNDEF_A1:		nst_byte_t := x"A1";
-	constant OP_MULH_RIM:		nst_byte_t := x"A2";
-	constant OP_MULSH_RIM:		nst_byte_t := x"A3";
+	constant OP_MULH_RIM:		nst_byte_t := x"A1";
+	constant OP_MULSH_RIM:		nst_byte_t := x"A2";
+	constant OP_CMOV_RIM:		nst_byte_t := x"A3";
 	constant OP_PMUL_RIM:		nst_byte_t := x"A4";
-	constant OP_UNDEF_A5:		nst_byte_t := x"A5";
-	constant OP_PMULH_RIM:		nst_byte_t := x"A6";
-	constant OP_PMULSH_RIM:		nst_byte_t := x"A7";
+	constant OP_PMULH_RIM:		nst_byte_t := x"A5";
+	constant OP_PMULSH_RIM:		nst_byte_t := x"A6";
+	constant OP_PCMOV_RIM:		nst_byte_t := x"A7";
 	
 	constant OP_DIV_RIM:		nst_byte_t := x"A8";
 	constant OP_DIVS_RIM:		nst_byte_t := x"A9";

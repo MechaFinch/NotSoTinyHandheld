@@ -22,7 +22,7 @@ Memory Manager
 	decompose block read/writes into operations suitable to each device. 
 
 Caches
-	The FPGA has 24 5120 bit BRAM blocks, and we msy want at least 2 of these for opcode decoding.
+	The FPGA has 24 5120 bit BRAM blocks, and we may want some of these for opcode decoding.
 	With maths done below, we find these possible configurations:
 	
 	-- 2 WAY ASSOCIATIVE --
@@ -31,7 +31,9 @@ Caches
 	512x2x4 (4k, 11)	256x2x8	(4k, 9)		(8k, 20)	<-- this one
 	256x2x8 (4k, 9)		256x2x8 (4k, 9)		(8k, 18)
 	
-	With 4 remaining BRAMs, we may allocate 512-1024 bytes of bootrom
+	With 20 BRAMs used by the chosen cache configuration, we may allocate 4 to various ROMs
+	If used for memory, each BRAM can store 512 bytes
+	If used for byte decoding, each BRAM can decode 20 bits
 	
 	Block Size - 1024x 2x 4 byte (8k)
 	data: 64 bits

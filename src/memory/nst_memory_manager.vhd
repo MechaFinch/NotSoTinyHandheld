@@ -89,21 +89,40 @@ architecture a1 of nst_memory_manager is
 	-- main operation buffer
 	type operation_state_t is (
 		IDLE,
-		
 		A_READ, A_WRITE,
-		NA_READ,
+		NA_READ_FIRST, NA_READ_LAST,
 		NA_WRITE_FIRST_READ, NA_WRITE_FIRST_WRITE,
 		NA_WRITE_LAST_READ, NA_WRITE_LAST_WRITE
 	);
 
-	signal operation_buffer:	bulk_data_t;				-- data being read/written
-	signal remaining_op_size:	integer range 0 to 20;		-- number of bytes left to read/write
-	signal op_buffer_state:		operation_state_t := IDLE;	-- current state
-	signal buffer_offset:		integer range 0 to 19;		-- where are we placing data
+	signal operation_buffer:	bulk_data_t;						-- data being read/written
+	signal remaining_op_size:	integer range 0 to 20;				-- number of bytes left to read/write
+	signal op_buffer_state:		operation_state_t := IDLE;			-- current state
+	signal buffer_offset:		integer range 0 to 19;				-- where are we placing data
 	
-	signal operation_address:	nst_dword_t;			-- working base address
-	signal operation_id:		device_id_t;			-- working device id
-	signal operation_word:		integer range 1 to 2;	-- working word size
+	signal operation_address:	nst_dword_t;						-- working base address
+	signal operation_id:		device_id_t;						-- working device id
+	signal operation_word:		integer range 1 to 4;				-- working word size
+	signal operation_ready:		std_logic;							-- working ready signal
+	signal operation_data_in:	array (3 downto 0) of nst_byte_t;	-- working data source
+	
+	-- dcache operation buffer
+	type dcop_state_t is (
+		IDLE,
+		A_READ,
+		A_WRITE
+	);
+	
+	signal dcop_buffer:		array (3 downto 0) of nst_byte_t;
+	signal dcop_remaining:	integer range 0 to 4;
+	signal dcop_state:		dcop_state_t := IDLE;
+	signal dcop_offset:		integer range 0 to 3;
+	
+	signal dcop_address:	nst_dword_t;
+	signal dcop_id:			device_id_t;
+	signal dcop_word:		integer range 1 to 2;
+	signal dcop_ready:		std_logic;
+	signal dcop_data_in:	array (3 downto 0) of nst_byte_t;
 	
 	-- instruction cache
 	signal icache_address:	nst_dword_t;
@@ -113,6 +132,9 @@ architecture a1 of nst_memory_manager is
 	signal icache_clear:	std_logic;
 	
 	-- data cache
+	signal dcache_data_in:		dcache_block_data_t;
+	signal dcache_data_out:		dcache_block_data_t;
+	signal dcache_ready_out:	std_logic;
 	
 	-- devie operation
 	signal device_id:	device_id_t;
@@ -123,6 +145,9 @@ architecture a1 of nst_memory_manager is
 	signal device_read:		std_logic;
 	signal device_write:	std_logic;
 	signal device_ready:	std_logic;
+	
+	-- ready state
+	signal known_address:	nst_dword_t := 32x"FFFFFFFF";
 begin
 	
 
@@ -148,16 +173,138 @@ begin
 	--		Write word
 	--		Increment offset by word size
 	
-	op_buffer_comb_proc: process (all) is
+	-- Operation Buffer
+	-- IDLE:
+	--	memop_read high -> start read op
+	--		- set remaining_op_size to memop_size
+	--		- reset buffer_offset
+	--		- set operation_id to device/dcache
+	--		- set operation_address to the aligned global address for dcache or local address for device
+	--		- set operation_word to the device word size (4 for dcache)
+	--		- set op_buffer_state to aligned/not aligned read
+	--	memop_write high -> start write op
+	--		- set remaining_op_size to memop_size
+	--		- reset buffer_offset
+	--		- latch memop_data_in to operation_buffer
+	--		- set operation_id to device/dcache
+	--		- set operation_address to aligned global/device address
+	--		- set operation_word to device word size (4 for dcache)
+	--		if aligned:
+	--			- set dcache_data_in or device_data_in to the start of memop_data_in
+	--			- set op_buffer_state according to whether multiple words are required
+	--		otherwise
+	--			- set op_buffer_state to not aligned write first (read)
+	--	icache_read high -> start read for icache
+	--		- set remaining_op_size to 8
+	--		- reset buffer_offset
+	--		- set operation_id to device id
+	--		- set operation_address to local address
+	--		- set operation_word to device word size
+	--		- set op_buffer_state to aligned read
+	--
+	-- ALIGNED READ:
+	--	when the operation is ready;
+	--		- latch the read bytes into operation_buffer
+	--		- increment buffer_offset by operation_word
+	--		- increment operation_address by operation_word
+	--		- decrement remaining_op_size by operation_word
+	--		if the next amount remaining is zero:
+	--			- set ready high
+	--			- set op_buffer_state to idle
+	--		if the next amount remaining is less than the word size:
+	--			- set op_buffer_state to not aligned read last
+	--		otherwise
+	--			- set op_buffer_state to aligned read
+	--
+	-- ALIGNED WRITE:
+	--	when the operation is ready:
+	--		- increment buffer_offset by operation_word
+	--		- increment operation_address by operation_word
+	--		- decrement remaining_op_size by operation_word
+	--		if the next amount remaining is zero:
+	--			- set ready high
+	--			- set op_buffer_state to idle
+	--		if the next amount remaining is less than the word size
+	--			- set op_buffer_state to not aligned write last (read)
+	--		otherwise
+	--			- set dcache_data_in or device_data_in to the next set of operation_buffer bytes
+	--			- set op_buffer_state to aligned write
+	--
+	-- NOT ALIGNED READ FIRST:
+	--	when the operation is ready;
+	--		- latch the read bytes into operation_buffer, accounting for misalignment
+	--		- increment buffer_offset by (operation_word - misalignment)
+	--		- decrement remaining_op_size by (operation_word - misalignment)
+	--		- increment operation_address by operation_word
+	--		if the next amount remaining is zero:
+	--			- set ready high
+	--			- set op_buffer_state to idle
+	--		if the next amount remaining is less than the word size:
+	--			- set op_buffer_state to not aligned read last
+	--		otherwise
+	--			- set op_buffer_state to aligned read
+	--
+	-- NOT ALIGNED READ LAST
+	--	when the operation is ready;
+	--		- latch the read bytes into operation_buffer, accounting for misalignment
+	--		- set ready high
+	--		- set op_buffer_state to idle
+	--
+	-- NOT ALIGNED WRITE FIRST (READ):
+	--	when the operation is ready:
+	--		- latch read bytes into dcache_data_in or device_data_in, lower part
+	--		- latch misaligned operation_buffer bytes into dcache_data_in or device_data_in, upper part
+	--		- set op_buffer_state to not aligned write first (write)
+	--
+	-- NOT ALIGNED WRITE FIRST (WRITE):
+	--	when the operation is ready:
+	--		- increment buffer_offset by (operation_word - misalignment)
+	--		- increment operation_address by operation_word
+	--		if the next amount remaining is zero:
+	--			- set ready high
+	--			- set op_buffer_state to idle
+	--		if the next amount remaining is less than the word size
+	--			- set op_buffer_state to not aligned write last (read)
+	--		otherwise
+	--			- set dcache_data_in or device_data_in to the next set of operation_buffer bytes
+	--			- set op_buffer_state to aligned write
+	--
+	-- NOT ALIGNED WRITE LAST (READ):
+	--	when the operation is ready:
+	--		- latch misaligned operation_buffer bytes into dcache_data_in or device_data_in, lower part
+	--		- latch read bytes into dcache_data_in or device_data_in, upper part
+	--		- set op_buffer_state to not aligned write last (write)
+	--
+	-- NOT ALIGNED WRITE LAST (WRITE):
+	--	when the operation is ready:
+	--		- set ready high
+	--		- set op_buffer_state to idle
+	--
+	
+	comb_proc: process (all) is
 	begin
-		-- combinational logic related to the op buffer
-		decode_address <= 	memop_address when (memop_read = '1' or memop_write = '1') else
+		-- async ready reset
+		if known_address /= address then
+			ready <= '0';
+		end if;
+	
+		-- combinational logic related to the op buffers
+		decode_address <= 	dcop_address when dcop_state /= IDLE else
+							memop_address when (memop_read = '1' or memop_write = '1') else
 							icache_read_address;
 		
-		decode_size <=	memop_size when (memop_read = '1' or memop_write = '1') else
+		decode_size <=	4 when dcop_state /= IDLE else
+						memop_size when (memop_read = '1' or memop_write = '1') else
 						8;
 		
 		icache_data	<= operation_buffer(7 downto 0);
+		
+		operation_ready	<= 	dcache_ready_out when operation_id = DCACHE else
+							device_ready;
+		
+		operation_data_in(1 downto 0) <=	dcache_data_out(1 downto 0) when operation_id = DCACHE else
+											device_data_out;
+		operation_data_in(3 downto 2) <=	dcache_data_out(3 downto 2);
 		
 		case op_buffer-state is
 			when IDLE =>
@@ -172,7 +319,11 @@ begin
 				device_read		<= '0';
 				device_write	<= '1';
 				
-			when NA_READ =>
+			when NA_READ_FIRST =>
+				device_read		<= '1';
+				device_write	<= '0';
+			
+			when NA_READ_LAST =>
 				device_read		<= '1';
 				device_write	<= '0';
 				
@@ -194,64 +345,103 @@ begin
 		end case;
 	end process;
 	
-	op_buffer_state_proc: process (device_exec_clk	) is
-		variable aligned:	boolean := true;
+	op_buffer_state_proc: process (device_exec_clk) is
+		variable device_misalignment:		integer range 0 to 7 := 0;
+		variable cache_misalignment:		integer range 0 to 3 := 0;
+		variable truncated_word:			integer range 0 to 7 := 0;
+		variable next_remaining:			integer range 0 to 20 := 0;
+		
+		variable decode_device_address_aligned:	nst_dword_t;
 	begin
-		-- Aligned to device word size?
-		device_aligned	:=	(memop_address(0) = '0')			when decode_word = 2 else
-							(memop_address(1 downto 0) = "00")	when decode_word = 4 else
-							(memop_address(2 downto 0) = "000")	when decode_word = 8 else
-							true;
+		-- Check for alignment, align device address
+		case decode_word is
+			when 2 =>
+				device_misalignment 						:= 1 when decode_device_address(0) = '1' else 0;
+				device_misalignment_last					:= 1 when remaining_op_size = 1 else 0;
+				decode_device_address_aligned(31 downto 3)	:= decode_device_address(31 downto 1);
+				decode_device_address_aligned(0)			:= "0";
+				
+			when 4 =>
+				device_misalignment 						:= to_integer(unsigned(decode_device_address(1 downto 0)));
+				decode_device_address_aligned(31 downto 2)	:= decode_device_address(31 downto 2);
+				decode_device_address_aligned(1 downto 0)	:= "00";
+					
+			when 8 =>
+				device_misalignment		 					:= to_integer(unsigned(decode_device_address(2 downto 0)));
+				decode_device_address_aligned(31 downto 3)	:= decode_device_address(31 downto 3);
+				decode_device_address_aligned(2 downto 0)	:= "000";
+				
+			when others =>
+				device_misalignment 			:= 0;
+				decode_device_address_aligned	:= decode_device_address;
+			
+		end case;
 		
 		-- Aligned to dcache block size?
-		cache_aligned	:= memop_address(1 downto 0) = "00";
+		cache_misalignment	:= to_integer(unsigned(memop_address(1 downto 0)));
 	
 		if rising_edge(device_exec_clk) then
 			case op_buffer_state is
 				-- IDLE: Wait for an operation
 				when IDLE =>
-					if memop_read then
+					if memop_read = '1' then
+						-- Read.
 						remaining_op_size	<= memop_size;
 						buffer_offset		<= 0;
 						
-						-- Read.
 						if decode_cachable then
-							operation_id		<= DCACHE;
-							operation_address	<= memop_address; -- global address
-							operation_word		<= 4;
+							operation_id					<= DCACHE;
+							operation_address(31 downto 2)	<= memop_address(31 downto 2); -- global address (aligned)
+							operation_address(1 downto 0)	<= "00";
+							operation_word					<= 4;
 							
-							op_buffer_state	<=	A_READ when cache_aligned else
-												NA_READ;
+							op_buffer_state	<=	A_READ when cache_misalignment = 0 else
+												NA_READ_FIRST;
 						else
 							operation_id		<= decode_device_id;
-							operation_address	<= decode_device_address; -- local address
+							operation_address	<= decode_device_address_aligned; -- local address
 							operation_word		<= decode_word;
 							
-							op_buffer_state	<=	A_READ when device_aligned else
-												NA_READ;
+							op_buffer_state	<=	A_READ when device_misalignment = 0 else
+												NA_READ_FIRST;
 						end if;
-					elsif memop_write then
+					elsif memop_write = '1' then
 						-- Write.
 						remaining_op_size	<= memop_size;
 						buffer_offset		<= 0;
+						opeartion_buffer	<= memop_data_in;
 						
-						-- Read.
 						if decode_cachable then
 							operation_id		<= DCACHE;
-							operation_address	<= memop_address; -- global address
+							operation_address(31 downto 2)	<= memop_address(31 downto 2); -- global address (aligned)
+							operation_address(1 downto 0)	<= "00";
 							operation_word		<= 4;
 							
-							op_buffer_state	<=	A_WRITE when cache_aligned else
-												NA_WRITE_FIRST_READ;
+							if cache_misalignment = 0 then
+								dcache_data_in	<= memop_data_in(3 downto 0);
+								op_buffer_state	<= 	A_WRITE when memop_size >= 4 else
+													NA_WRITE_LAST_READ;
+							else
+								op_buffer_state	<= NA_WRITE_FIRST_READ;
+							end if;
 						else
 							operation_id		<= decode_device_id;
-							operation_address	<= decode_device_address; -- local address
+							operation_address	<= decode_device_address_aligned; -- local address
 							operation_word		<= decode_word;
+							operation_buffer	<= memop_data_in;
+							
+							if device_misalignment = 0 then
+								device_data_in	<= memop_data_in(1 downto 0);
+								op_buffer_state	<= 	A_WRITE when memop_size >= decode_word else
+													NA_WRITE_LAST_READ;
+							else
+								op_buffer_state	<= NA_WRITE_FIRST_READ;
+							end if;
 							
 							op_buffer_state	<=	A_WRITE when device_aligned else
 												NA_WRITE_FIRST_READ;
 						end if;
-					elsif icache_read then
+					elsif icache_read = '1' then
 						-- Read, always aligned
 						remaining_op_size	<= 8;
 						buffer_offset		<= 0;
@@ -266,8 +456,26 @@ begin
 				
 				-- A_READ: Aligned read, no special action
 				when A_READ =>
-					if device_ready = '1' then
+					if operation_ready = '1' then
+						next_remaining := remaining_op_size - operation_word;
 						
+						operation_buffer(buffer_offset + operation_word - 1 downto buffer_offset) <= opeartion_data_in(operation_word - 1 downto 0);
+						
+						buffer_offset		<= buffer_offset + operation_word;
+						operation_address	<= std_logic_vector(unsigned(operation_address) + operation_word);
+						remaining_op_size	<= next_remaining;
+						
+						if next_remaining = 0 then
+							-- done
+							ready			<= '1';
+							op_buffer_state	<= IDLE;
+						elsif next_remaining < operation_word then
+							-- not done, last word isn't aligned
+							op_buffer_state	<= NA_READ_LAST;
+						else
+							-- not done, word aligned
+							op_buffer_state	<= A_READ;
+						end if;
 					else
 						-- not ready, wait
 						op_buffer_state <= A_READ;
@@ -275,17 +483,78 @@ begin
 					
 				-- A_WRITE: Aligned write, no special action
 				when A_WRITE =>
-					if device_ready = '1' then
-					
+					if operation_ready = '1' then
+						next_remaining := remaining_op_size - operation_word;
+						
+						buffer_offset 		<= buffer_offset + operation_word;
+						operation_address	<= std_logic_vector(unsigned(operation_address) + operation_word);
+						remaining_op_size	<= next_remaining;
+						
+						if next_remaining = 0 then
+							-- no input
+							ready			<= '1';
+							op_buffer_state	<= IDLE;
+						elsif next_remaining < operation_word then
+							-- input will be set in this step
+							op_buffer_state	<= NA_WRITE_LAST_READ;
+						else
+							-- set input, we know it exists
+							if operation_id = DCACHE then
+								dcache_data_in	<= operation_buffer(buffer_offset + 8 - 1 downto buffer_offset + 4);
+							else
+								device_data_in	<= operation_buffer(buffer_offset + operation_word + operation_word - 1 downto buffer_offset + operation_word);
+							end if;
+						
+							op_buffer_state	<= A_WRITE;
+						end if;
 					else
 						-- not ready, wait
 						op_buffer_state <= A_WRITE;
 					end if;
 				
-				-- NA_READ: Non-aligned read, upper byte(s) discarded
-				when NA_READ =>
-					if device_ready = '1' then
-					
+				-- NA_READ_FIRST: Non-aligned read, first word, lower byte(s) discarded
+				when NA_READ_FIRST =>
+					if operation_ready = '1' then
+						if operation_id = DCACHE then
+							truncated_word	:= operation_word - cache_misalignment;
+							next_remaining	:= remaining_op_size - truncated_word;
+							
+							buffer_offset		<= buffer_offset + truncated_word;
+							operation_address	<= std_logic_vector(unsigned(operation_address) + truncated_word);
+							remaining_op_size	<= next_remaining;
+							
+							operation_buffer(buffer_offset + truncated_word - 1 downto buffer_offset) <= opeartion_data_in(operation_word - 1 downto cache_misalignment);
+						else
+							truncated_word	:= operation_word - device_misalignment
+							next_remaining 	:= remaining_op_size - truncated_word;
+							
+							buffer_offset		<= buffer_offset + truncated_word;
+							operation_address	<= std_logic_vector(unsigned(operation_address) + operation_word);
+							remaining_op_size	<= next_remaining;
+							
+							operation_buffer(buffer_offset + truncated_word - 1 downto buffer_offset) <= opeartion_data_in(operation_word - 1 downto device_misalignment);
+						end if;
+						
+						if next_remaining = 0 then
+							ready			<= '1';
+							op_buffer_state	<= IDLE;
+						elsif next_remaining < operation_word then
+							op_buffer_state	<= NA_READ_LAST;
+						else
+							op_buffer_state	<= A_READ;
+						end if;
+					else
+						-- not ready, wait
+						op_buffer_state <= NA_READ;
+					end if;
+				
+				-- NA_READ_LAST: Non-aligned read, last word, upper byte(s) discarded
+				when NA_READ_LAST =>
+					if operation_ready = '1' then
+						operation_buffer(buffer_offset + remaining_op_size - 1 downto buffer_offset) <= operation_data_in(remaining_op_size - 1 downto 0);
+						
+						ready			<= '1';
+						op_buffer_state	<= IDLE;
 					else
 						-- not ready, wait
 						op_buffer_state <= NA_READ;
@@ -293,8 +562,20 @@ begin
 				
 				-- NA_WRITE_FIRST_READ: Non-aligned write, first word, read for lower byte(s)
 				when NA_WRITE_FIRST_READ =>
-					if device_ready = '1' then
-					
+					if operation_ready = '1' then
+						if operation_id = DCACHE then
+							truncated_word	:= operation_word - cache_misalignment;
+							
+							dcache_data_in(cache_misalignment - 1 downto 0)				<= operation_data_in(cache_misalignment - 1 downto 0); -- lower gets misalignment
+							dcache_data_in(operation_word downto cache_misalignment)	<= operation_buffer(buffer_offset + truncated_word - 1 downto buffer_offset);
+						else
+							truncated_word	:= operation_word - device_misalignment;
+							
+							device_data_in(device_misalignment - 1 downto 0)			<= operation_data_in(device_misalignment - 1 downto 0);
+							device_data_in(operation_word downto device_misalignment)	<= operation_buffer(buffer_offset + truncated_word - 1 downto buffer_offset);
+						end if;
+						
+						op_buffer_state	<= NA_WRITE_FIRST_WRITE;
 					else
 						-- not ready, wait
 						op_buffer_state <= NA_WRITE_FIRST_READ;
@@ -302,8 +583,35 @@ begin
 				
 				-- NA_WRITE_FIRST_WRITE: Non-aligned write, first word, write using mixed bytes
 				when NA_WRITE_FIRST_WRITE =>
-					if device_ready = '1' then
-					
+					if operation_ready = '1' then
+						if operation_id = DCACHE then
+							truncated_word	:= operation_word - cache_misalignment;
+							next_remaining	:= remaining_op_size - truncated_word;
+							
+							buffer_offset		<= buffer_offset + truncated_word;
+							remaining_op_size	<= next_remaining; 
+						else
+							truncated_word	:= operation_word - device_misalignment;
+							next_remaining	:= remaining_op_size - truncated_word;
+							
+							buffer_offset		<= buffer_offset + truncated_word;
+							remaining_op_size	<= next_remaining; 
+						end if;
+						
+						if next_remaining = 0 then
+							ready			<= '1';
+							op_buffer_state	<= IDLE;
+						elsif next_remaining <= operation_word then
+							op_buffer_state	<= NA_WRITE_LAST_READ;
+						else
+							if operation_id = DCACHE then
+								dcache_data_in	<= operation_buffer(buffer_offset + 8 - 1 downto buffer_offset + 4);
+							else
+								device_data_in	<= operation_buffer(buffer_offset + operation_word + operation_word - 1 downto buffer_offset + operation_word);
+							end if;
+						
+							op_buffer_state	<= A_WRITE;
+						end if;
 					else
 						-- not ready, wait
 						op_buffer_state <= NA_WRITE_FIRST_WRITE;
@@ -311,8 +619,16 @@ begin
 				
 				-- NA_WRITE_LAST_READ: Non-aligned write, last word, read for upper byte(s)
 				when NA_WRITE_LAST_READ =>
-					if device_ready = '1' then
-					
+					if operation_ready = '1' then
+						if operation_id = DCACHE then
+							dcache_data_in(remaining_op_size - 1 downto 0)				<= operation_buffer(buffer_offset + remaining_op_size - 1 downto buffer_offset);		
+							dcache_data_in(operation_word - 1 downto remaining_op_size)	<= operation_data_in(operation_word - 1 downto remaining_op_size);
+						else
+							device_data_in(remaining_op_size - 1 downto 0)				<= operation_buffer(buffer_offset + remaining_op_size - 1 downto buffer_offset);		
+							device_data_in(operation_word - 1 downto remaining_op_size)	<= operation_data_in(operation_word - 1 downto remaining_op_size);
+						end if;
+						
+						op_buffer_state	<= NA_WRITE_LAST_WRITE;
 					else
 						-- not ready, wait
 						op_buffer_state <= NA_WRITE_LAST_READ;
@@ -320,8 +636,9 @@ begin
 				
 				-- NA_WRITE_LAST_WRITE: Non-aligned write, last word, write using mixed bytes
 				when NA_WRITE_LAST_WRITE =>
-					if device_ready = '1' then
-					
+					if operation_ready = '1' then
+						ready			<= '1';
+						op_buffer_state	<= IDLE;
 					else
 						-- not ready, wait
 						op_buffer_state <= NA_WRITE_LAST_WRITE;
@@ -329,6 +646,21 @@ begin
 			end case;
 		end if;
 	end process;
+	
+	-- DCache Operation Buffer
+	-- Like the above operation buffer, but simpler as it doesn't have to account for misalignment
+	-- While idle
+	--	On dcache read, reset operation size to 4 & offset to 0, latch address, state -> A_READ
+	--	On dcache write, reset operation size to 4 & offset to 0, latch address, latch data, state -> A_WRITE
+	-- While reading
+	--	Send read & address to decoded device
+	--	When device ready
+	--		Latch (word size) bytes
+	--		Increment offset by (word size)
+	-- While writing
+	--	Send data
+	--	Write word
+	--	Increment offset by (word size)
 	
 	-- Entities
 	-- Address Decode

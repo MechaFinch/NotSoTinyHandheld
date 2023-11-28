@@ -25,7 +25,6 @@ entity nst_data_cache is
 		
 		request_read	in std_logic;
 		request_write	in std_logic;
-		correct_miss	in std_logic; -- if unset, the cache will ignore misses
 		request_ready	out std_logic;
 		
 		-- memory operation requested by cache

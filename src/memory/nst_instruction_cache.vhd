@@ -20,12 +20,12 @@ use work.nst_types.all;
 entity nst_instruction_cache is
 	port (
 		-- cpu side
-		address:	in nst_dword_t;				-- address the cpu is reading
+		address:	in nst_dword_t;				-- address the cpu is reading (aligned)
 		data:		out icache_block_data_t;	-- data block for the cpu
 		data_ready:	out std_logic;
 		
 		-- memory side
-		mem_address:	out nst_dword_t;		-- address the cache is reading
+		mem_address:	out nst_dword_t;		-- address the cache is reading (aligned)
 		mem_data:		in icache_block_data_t;	-- data block for the cache
 		mem_read:		out std_logic;
 		mem_ready:		in std_logic;

@@ -94,6 +94,9 @@ architecture a1 of nst_memory_manager is
 		NA_WRITE_FIRST_READ, NA_WRITE_FIRST_WRITE,
 		NA_WRITE_LAST_READ, NA_WRITE_LAST_WRITE
 	);
+	
+	signal memop_read_last:		std_logic;
+	signal memop_write_last:	std_logic;
 
 	signal operation_buffer:	bulk_data_t;						-- data being read/written
 	signal remaining_op_size:	integer range 0 to 20;				-- number of bytes left to read/write
@@ -105,6 +108,8 @@ architecture a1 of nst_memory_manager is
 	signal operation_word:		integer range 1 to 4;				-- working word size
 	signal operation_ready:		std_logic;							-- working ready signal
 	signal operation_data_in:	array (3 downto 0) of nst_byte_t;	-- working data source
+	
+	signal serving_icache:	std_logic;
 	
 	-- dcache operation buffer
 	type dcop_state_t is (
@@ -132,11 +137,22 @@ architecture a1 of nst_memory_manager is
 	signal icache_clear:	std_logic;
 	
 	-- data cache
+	signal dcache_read_in:			std_logic;
+	signal dcache_read_out:			std_logic;
+	signal dcache_read_out_last:	std_logic;
+	signal dcache_write_in:			std_logic;
+	signal dcache_write_out:		std_logic;
+	signal dcache_write_out_last:	std_logic;
+	
 	signal dcache_data_in:		dcache_block_data_t;
 	signal dcache_data_out:		dcache_block_data_t;
 	signal dcache_ready_out:	std_logic;
 	
-	-- devie operation
+	signal dcache_op_address:	nst_dword_t;
+	signal dcache_op_data_in:	dcache_block_data_t;
+	signal dcache_op_data_out: 	dcache_block_data_t;
+	
+	-- device operation
 	signal device_id:	device_id_t;
 	
 	signal device_data_in:	nst_word_t;
@@ -147,7 +163,9 @@ architecture a1 of nst_memory_manager is
 	signal device_ready:	std_logic;
 	
 	-- ready state
-	signal known_address:	nst_dword_t := 32x"FFFFFFFF";
+	signal known_address:			nst_dword_t := 32x"FFFFFFFF";
+	signal known_icache_address:	nst_dword_t := 32x"FFFFFFFF";
+	signal known_dcache_address:	nst_dword_t := 32x"FFFFFFFF";
 begin
 	
 
@@ -281,21 +299,55 @@ begin
 	--		- set op_buffer_state to idle
 	--
 	
+	-- edge detection
+	edge_proc: process (device_exec_clk) is
+	begin
+		if rising_edge(device_exec_clk) then
+			known_address			<= address;
+			known_icache_address	<= icache_address;
+			known_dcache_address	<= dcache_op_address;
+			
+			memop_read_last			<= memop_read;
+			memop_write_last		<= memop_write;
+			dcache_read_out_last	<= dcache_read_out;
+			dcache_write_out_last	<= dcache_write_out_last;
+		end if;
+	end process;
+	
 	comb_proc: process (all) is
 	begin
 		-- async ready reset
-		if known_address /= address then
+		if	known_address /= address or
+			memop_read_last /= memop_read or
+			memop_write_last /= memop_write then
 			ready <= '0';
+		end if;
+		
+		if known_icache_address /= icache_address then
+			icache_ready <= '0';
+		end if;
+		
+		if	known_dcache_address /= dcache_op_address or
+			dcache_read_out_last /= dcache_read_out or 
+			dcache_write_out_last /= dcache_write_out then
+			dcache_ready <= '0';
 		end if;
 	
 		-- combinational logic related to the op buffers
-		decode_address <= 	dcop_address when dcop_state /= IDLE else
+		-- mostly chooses what controls decude & devices
+		decode_address <= 	dcache_op_address when dcop_state /= IDLE else
 							memop_address when (memop_read = '1' or memop_write = '1') else
 							icache_read_address;
 		
 		decode_size <=	4 when dcop_state /= IDLE else
 						memop_size when (memop_read = '1' or memop_write = '1') else
 						8;
+		
+		device_address	<=	dcop_address when dcop_state /= IDLE else
+							operation_address;
+		
+		device_id <=	dcop_id when dcop_state /= IDLE else
+						operation_id;
 		
 		icache_data	<= operation_buffer(7 downto 0);
 		
@@ -306,43 +358,103 @@ begin
 											device_data_out;
 		operation_data_in(3 downto 2) <=	dcache_data_out(3 downto 2);
 		
-		case op_buffer-state is
+		-- dcache read/write
+		case op_buffer_state is
 			when IDLE =>
-				device_read		<= '0';
-				device_write	<= '0';
+				dcache_read_in	<= '0';
+				dcache_write_in	<= '0';
 			
 			when A_READ =>
-				device_read		<= '1';
-				device_write	<= '0';
+				dcache_read_in	<= '1';
+				dcache_write_in	<= '0';
 				
 			when A_WRITE =>
-				device_read		<= '0';
-				device_write	<= '1';
+				dcache_read_in	<= '0';
+				dcache_write_in	<= '1';
 				
 			when NA_READ_FIRST =>
-				device_read		<= '1';
-				device_write	<= '0';
+				dcache_read_in	<= '1';
+				dcache_write_in	<= '0';
 			
 			when NA_READ_LAST =>
-				device_read		<= '1';
-				device_write	<= '0';
+				dcache_read_in	<= '1';
+				dcache_write_in	<= '0';
 				
 			when NA_WRITE_FIRST_READ =>
-				device_read		<= '1';
-				device_write	<= '0';
+				dcache_read_in	<= '1';
+				dcache_write_in	<= '0';
 				
 			when NA_WRITE_FIRST_WRITE =>
-				device_read		<= '0';
-				device_write	<= '1';
+				dcache_read_in	<= '0';
+				dcache_write_in	<= '1';
 				
 			when NA_WRITE_LAST_READ =>
-				device_read		<= '1';
-				device_write	<= '0';
+				dcache_read_in	<= '1';
+				dcache_write_in	<= '0';
 				
 			when NA_WRITE_LAST_WRITE =>
-				device_read		<= '0';
-				device_write	<= '1';
+				dcache_read_in	<= '0';
+				dcache_write_in	<= '1';
 		end case;
+		
+		-- device read/write
+		if dcop_state = IDLE then
+			-- operation buffer has device control
+			case op_buffer_state is
+				when IDLE =>
+					device_read		<= '0';
+					device_write	<= '0';
+				
+				when A_READ =>
+					device_read		<= '1';
+					device_write	<= '0';
+					
+				when A_WRITE =>
+					device_read		<= '0';
+					device_write	<= '1';
+					
+				when NA_READ_FIRST =>
+					device_read		<= '1';
+					device_write	<= '0';
+				
+				when NA_READ_LAST =>
+					device_read		<= '1';
+					device_write	<= '0';
+					
+				when NA_WRITE_FIRST_READ =>
+					device_read		<= '1';
+					device_write	<= '0';
+					
+				when NA_WRITE_FIRST_WRITE =>
+					device_read		<= '0';
+					device_write	<= '1';
+					
+				when NA_WRITE_LAST_READ =>
+					device_read		<= '1';
+					device_write	<= '0';
+					
+				when NA_WRITE_LAST_WRITE =>
+					device_read		<= '0';
+					device_write	<= '1';
+			end case;
+		else
+			-- dcache op buffer has device control
+			case dcop_state is
+				when IDLE =>
+					device_read		<= '0';
+					device_write	<= '0';
+				
+				when A_READ =>
+					device_read		<= '1';
+					device_write	<= '0';
+				
+				when A_WRITE =>
+					device_read		<= '0';
+					device_write	<= '1';
+			end case;
+		end if;
+		
+		-- dcop read/write
 	end process;
 	
 	op_buffer_state_proc: process (device_exec_clk) is
@@ -388,6 +500,7 @@ begin
 						-- Read.
 						remaining_op_size	<= memop_size;
 						buffer_offset		<= 0;
+						serving_icache		<= '0';
 						
 						if decode_cachable then
 							operation_id					<= DCACHE;
@@ -409,6 +522,7 @@ begin
 						-- Write.
 						remaining_op_size	<= memop_size;
 						buffer_offset		<= 0;
+						serving_icache		<= '0';
 						opeartion_buffer	<= memop_data_in;
 						
 						if decode_cachable then
@@ -445,6 +559,7 @@ begin
 						-- Read, always aligned
 						remaining_op_size	<= 8;
 						buffer_offset		<= 0;
+						serving_icache		<= '1';
 						operation_id		<= decode_device_id;
 						operation_address	<= icache_read_address;
 						operation_word		<= decode_word;
@@ -467,7 +582,12 @@ begin
 						
 						if next_remaining = 0 then
 							-- done
-							ready			<= '1';
+							if serving_icache then
+								icache_ready <= '1';
+							else
+								ready <= '1';
+							end if;
+							
 							op_buffer_state	<= IDLE;
 						elsif next_remaining < operation_word then
 							-- not done, last word isn't aligned
@@ -492,7 +612,12 @@ begin
 						
 						if next_remaining = 0 then
 							-- no input
-							ready			<= '1';
+							if serving_icache then
+								icache_ready <= '1';
+							else
+								ready <= '1';
+							end if;
+							
 							op_buffer_state	<= IDLE;
 						elsif next_remaining < operation_word then
 							-- input will be set in this step
@@ -536,7 +661,12 @@ begin
 						end if;
 						
 						if next_remaining = 0 then
-							ready			<= '1';
+							if serving_icache then
+								icache_ready <= '1';
+							else
+								ready <= '1';
+							end if;
+							
 							op_buffer_state	<= IDLE;
 						elsif next_remaining < operation_word then
 							op_buffer_state	<= NA_READ_LAST;
@@ -553,7 +683,12 @@ begin
 					if operation_ready = '1' then
 						operation_buffer(buffer_offset + remaining_op_size - 1 downto buffer_offset) <= operation_data_in(remaining_op_size - 1 downto 0);
 						
-						ready			<= '1';
+						if serving_icache then
+							icache_ready <= '1';
+						else
+							ready <= '1';
+						end if;
+							
 						op_buffer_state	<= IDLE;
 					else
 						-- not ready, wait
@@ -589,17 +724,24 @@ begin
 							next_remaining	:= remaining_op_size - truncated_word;
 							
 							buffer_offset		<= buffer_offset + truncated_word;
+							operation_address	<= std_logic_vector(unsigned(operation_address) + truncated_word);
 							remaining_op_size	<= next_remaining; 
 						else
 							truncated_word	:= operation_word - device_misalignment;
 							next_remaining	:= remaining_op_size - truncated_word;
 							
 							buffer_offset		<= buffer_offset + truncated_word;
+							operation_address	<= std_logic_vector(unsigned(operation_address) + truncated_word);
 							remaining_op_size	<= next_remaining; 
 						end if;
 						
 						if next_remaining = 0 then
-							ready			<= '1';
+							if serving_icache then
+								icache_ready <= '1';
+							else
+								ready <= '1';
+							end if;
+							
 							op_buffer_state	<= IDLE;
 						elsif next_remaining <= operation_word then
 							op_buffer_state	<= NA_WRITE_LAST_READ;
@@ -637,7 +779,12 @@ begin
 				-- NA_WRITE_LAST_WRITE: Non-aligned write, last word, write using mixed bytes
 				when NA_WRITE_LAST_WRITE =>
 					if operation_ready = '1' then
-						ready			<= '1';
+						if serving_icache then
+							icache_ready <= '1';
+						else
+							ready <= '1';
+						end if;
+						
 						op_buffer_state	<= IDLE;
 					else
 						-- not ready, wait
@@ -648,19 +795,76 @@ begin
 	end process;
 	
 	-- DCache Operation Buffer
-	-- Like the above operation buffer, but simpler as it doesn't have to account for misalignment
-	-- While idle
-	--	On dcache read, reset operation size to 4 & offset to 0, latch address, state -> A_READ
-	--	On dcache write, reset operation size to 4 & offset to 0, latch address, latch data, state -> A_WRITE
-	-- While reading
-	--	Send read & address to decoded device
-	--	When device ready
-	--		Latch (word size) bytes
-	--		Increment offset by (word size)
-	-- While writing
-	--	Send data
-	--	Write word
-	--	Increment offset by (word size)
+	-- Implementes aligned read/write for the dcache
+	dcop_buffer_state_proc: process (device_exec_clk) is
+		variable next_remaining: integer range 0 to 3;
+	begin
+		if rising_edge(device_exec_clk) then
+			case dcop_state is
+				when IDLE =>
+					if dcache_read_out = '1' then
+						dcop_remaining	<= 4;
+						dcop_offset		<= 0;
+						dcop_id			<= decode_device_id;
+						dcop_word		<= decode_word;
+					
+						dcop_state	<= A_READ;
+					elsif dcache_write_out = '1' then
+						dcop_remaining	<= 4;
+						dcop_offset		<= 0;
+						dcop_id			<= decode_device_id;
+						dcop_word		<= decode_word;
+						
+						dcop_buffer		<= dcache_op_data_out;
+						device_data_in	<= dcache_op_data_out(1 downto 0);
+					
+						dcop_state	<= A_WRITE;
+					else
+						dcop_state	<= IDLE;
+					end if;
+				
+				when A_READ =>
+					if device_ready then
+						next_remaining := dcop_remaining - dcop_word;
+						
+						dcop_buffer(dcop_offset + dcop_word - 1 downto dcop_offset) <= device_data_out(dcop_word - 1 downto 0);
+						
+						dcop_offset		<= dcop_offset + dcop_word;
+						dcop_address	<= std_logic_vector(unsigned(dcop_address) + dcop_word);
+						dcop_remaining	<= next_remaining;
+						
+						if next_remaining = 0 then
+							dcache_ready_in	<= '1';
+							dcop_state		<= IDLE;
+						else
+							dcop_state	<= A_READ;
+						end if;
+					else
+						dcop_state <= A_READ;
+					end if;
+				
+				when A_WRITE =>
+					if device_ready then
+						next_remaining := dcop_remaining - dcop_word;
+						
+						dcop_offset		<= dcop_offset + dcop_word;
+						dcop_address	<= std_logic_vector(unsigned(dcop_address) + dcop_word);
+						dcop_remaining	<= next_remaining;
+						
+						if next_remaining = 0 then
+							dcache_ready_in	<= '1';
+							dcop_state		<= IDLE;
+						else
+							device_data_in	<= operation_buffer(dcop_offset + dcop_word + dcop_word - 1 downto dcop_offset + dcop_word);
+						
+							dcop_state	<= A_WRITE;
+						end if;
+					else
+						dcop_state <= A_WRITE;
+					end if;
+			end case;
+		end if;
+	end process;
 	
 	-- Entities
 	-- Address Decode
@@ -686,9 +890,32 @@ begin
 			mem_address	=> icache_address,
 			mem_data	=> icache_data,
 			mem_read	=> icache_read,
-			mem_ready	=> icache_reay,
+			mem_ready	=> icache_ready,
 			
 			clear	=> icache_clear,
+			
+			exec_clk	=> device_exec_clk
+		);
+	
+	data_cache: entity work.nst_data_cache
+		port map (
+			request_address		=> operation_address,
+			request_data_in		=> dcache_data_in,
+			request_data_out	=> dcache_data_out,
+			
+			request_read	=> dcache_read_in,
+			request_write	=> dcache_write_in,
+			request_ready	=> dcache_ready_out,
+			
+			mem_address		=> dcache_op_address,
+			mem_data_in		=> dcache_op_data_in,
+			mem_data_out	=> dcache_op_data_out,
+			
+			mem_read	=> dcache_read_out,
+			mem_write	=> dcache_write_out,
+			mem_ready	=> dcache_ready_in,
+			
+			clear	=> dcache_clear,
 			
 			exec_clk	=> device_exec_clk
 		);
@@ -696,6 +923,7 @@ begin
 	-- Devices
 	device_op: entity work.nst_memory_device_operator
 		port map (
+			-- pins
 			memory_bus_IN		=> memory_bus_IN,
 			memory_bus_OUT		=> memory_bus_OUT,
 			memory_bus_OE		=> memory_bus_OE,
@@ -719,12 +947,14 @@ begin
 			btn_1	=> btn_1,
 			btn_2	=> btn_2,
 			
+			-- clocks
 			device_exec_clk	=> device_exec_clk,
 			device_ram_clk	=> device_ram_clk,
 			device_spi_clk	=> device_spi_clk,
 			
-			device_id	=> operation_device_id,
-			device_addr	=> operation_address,
+			-- control
+			device_id	=> device_id,
+			device_addr	=> device_address,
 			
 			data_in		=> device_data_in,
 			data_out	=> device_data_out,
